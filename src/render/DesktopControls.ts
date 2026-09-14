@@ -33,7 +33,7 @@ export class DesktopControls implements Controls {
   };
   private readonly onMouseMove = (e: MouseEvent) => {
     if (document.pointerLockElement !== this.canvas) return;
-    this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+    this.yaw += e.movementX * MOUSE_SENSITIVITY;
     this.pitch -= e.movementY * MOUSE_SENSITIVITY;
     this.pitch = clamp(this.pitch, -MAX_PITCH, MAX_PITCH);
   };
@@ -65,9 +65,9 @@ export class DesktopControls implements Controls {
 
     const cos = Math.cos(this.yaw);
     const sin = Math.sin(this.yaw);
-    // forward vector = (cos, sin) in sim (x,y)/(x,z) space; right = forward rotated -90deg.
-    const moveX = cos * forward + sin * strafe;
-    const moveY = sin * forward - cos * strafe;
+    // forward vector = (cos, sin) in sim (x,y)/(x,z) space; right = (-sin, cos).
+    const moveX = cos * forward - sin * strafe;
+    const moveY = sin * forward + cos * strafe;
 
     let buttons = 0;
     if (this.down.has("ShiftLeft") || this.down.has("ShiftRight")) buttons |= BUTTON_WALK;

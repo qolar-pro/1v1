@@ -12,6 +12,7 @@ import { DesktopControls } from "./DesktopControls";
 import { TouchControls, isTouchDevice } from "../ui/TouchControls";
 import { installOrientationGate } from "../ui/OrientationGate";
 import { hideBuyMenu, initBuyMenu, isBuyMenuOpen, toggleBuyMenu } from "../ui/BuyMenu";
+import { initTutorial } from "../ui/Tutorial";
 import { hideScoreboard, renderScoreboard, showScoreboard } from "../ui/Scoreboard";
 import { hideMatchEnd, hideRoundBanner, showMatchEnd, showRoundBanner } from "../ui/Results";
 import { updateDebugHud } from "../ui/DebugHud";
@@ -78,6 +79,7 @@ export class Scene3D {
     if (touch) installOrientationGate();
     if (!touch) this.installLookPrompt();
     this.installCrosshair();
+    initTutorial();
 
     initBuyMenu((kind, id) => {
       this.session.buyItem(kind, id);

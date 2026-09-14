@@ -149,7 +149,7 @@ export class TouchControls implements Controls {
       const dy = e.clientY - this.lookLastY;
       this.lookLastX = e.clientX;
       this.lookLastY = e.clientY;
-      this.yaw -= dx * TOUCH_LOOK_SENSITIVITY;
+      this.yaw += dx * TOUCH_LOOK_SENSITIVITY;
       this.pitch = clamp(this.pitch - dy * TOUCH_LOOK_SENSITIVITY, -MAX_PITCH, MAX_PITCH);
     });
     const end = (e: PointerEvent) => {
@@ -166,8 +166,8 @@ export class TouchControls implements Controls {
 
     const cos = Math.cos(this.yaw);
     const sin = Math.sin(this.yaw);
-    const moveX = cos * forward + sin * strafe;
-    const moveY = sin * forward - cos * strafe;
+    const moveX = cos * forward - sin * strafe;
+    const moveY = sin * forward + cos * strafe;
 
     let buttons = 0;
     if (this.left.mag > 0 && this.left.mag < WALK_THRESHOLD) buttons |= BUTTON_WALK;

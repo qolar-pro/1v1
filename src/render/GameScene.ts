@@ -176,7 +176,9 @@ export class GameScene extends Phaser.Scene {
     const matchView = this.session.getMatchView(nowMs);
     this.smokeCircles = matchView.smokes.map((s) => ({ x: s.x, y: s.y, radius: 140 }));
 
-    if (this.controls.consumeBuyToggle() && matchView.phase === "freeze") {
+    if (this.controls.consumeBuyToggle() && (isBuyMenuOpen() || matchView.phase === "freeze")) {
+      // Closing is always allowed (never trap the player behind the menu once
+      // live begins); opening is still freeze-phase-only, matching the spec.
       const world = this.session.getRenderState(nowMs);
       const localRole = this.session.localSlot === matchView.raiderSlot ? "raider" : "warden";
       toggleBuyMenu(world.players[this.session.localSlot], localRole);

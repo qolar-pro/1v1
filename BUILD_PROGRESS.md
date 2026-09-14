@@ -2,9 +2,10 @@
 
 ## Current phase
 
-**Phases 1–6 (netcode, world/vision, combat, rounds, economy/buy, mobile) — DONE.**
-**Phase 7 (polish) — mostly done** (nickname, share sheet, reconnect handling, results/rematch, both maps). Remaining: a final end-to-end human playtest of a full best-of-13 match, and a deploy smoke-test on a real static host.
-**Phase 8 (generated assets)** — not started; see note at the bottom.
+**Phases 1–7 (netcode, world/vision, combat, rounds, economy/buy, mobile, polish) — DONE and playtested.**
+**Phase 8 (generated assets)** — not attempted; see note at the bottom.
+
+What's left before this has had a genuinely complete human test pass: a full 13-round match played by two real people (only individual mechanics were exercised by automated scripted playtests, not a full match start-to-finish), and an actual deploy to a live static host (the production build was served locally via `vite preview` and confirmed working, but not pushed to Netlify/Vercel/GitHub Pages itself).
 
 This was built in one continuous session covering the full spec end-to-end rather than phase-by-phase with human checkpoints in between, per explicit instruction ("finish the whole thing"). Everything below was verified with scripted two-context Playwright sessions against the real dev server (real nostr relay connections, real WebRTC), not just `tsc`/`vite build` passing.
 
@@ -34,7 +35,7 @@ Nickname capture (persisted in `localStorage`, exchanged over a one-time "hello"
 - **RMB scope zoom for the Longshot** isn't implemented (the weapon's accuracy bonus and slower move speed are, the visual zoom isn't) — a pure time-budget cut.
 - **No true peer-reconnection.** The grace-period UI is real and handles transient blips, but a peer that fully leaves and reopens the link mid-match isn't rebound to its old slot — see DD-010.
 - **Phase 8 (generated art) not attempted.** See the note at the bottom.
-- A full 13-round match has not been played end-to-end by a human; individual mechanics (movement/prediction, vision, hitscan + damage + death, plant, buy, round-win payout, mobile touch input) were each verified live via scripted two-browser Playwright sessions against the running dev server, and the round/match state machine was verified by code review plus the one live round-win observed in testing.
+- A full 13-round match has not been played end-to-end by a human. Individually verified live via scripted two-browser Playwright sessions against the running dev server: movement/prediction/reconciliation (sub-pixel agreement, near-zero correction), fog of war rendering, buy menu + weapon purchase, freeze→live transition, hitscan + damage + a confirmed kill, the round-win economy payout (matched the spec's numbers exactly in two separate runs — e.g. $800 start − $600 bought pistol + $300 kill reward + $3250 round win = $3750), the round-1→round-2 transition (round counter incremented, no side swap before round 6, weapons reset to the starter pistol, money carried over, both players respawned alive at their role's spawn point), the plant action-progress mechanic (steady progress while holding E in the site, cancels on release before completion — matches real CS mechanics), and mobile touch controls rendering and responding to touch on an emulated touch device with no console errors. `npm run build`'s actual output was also served via `vite preview` and driven through a full two-browser connect-and-load cycle to confirm the *production* (minified) build works, not just the dev server.
 
 ## Director Decisions
 

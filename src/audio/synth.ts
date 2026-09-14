@@ -1,4 +1,4 @@
-/** Procedural sound generators. Each returns a fresh AudioBufferSourceNode (or a short-lived graph) already connected to `dest`, ready to `.start()`. Nothing here touches the DOM or Phaser. */
+/** Procedural sound generators. Each returns a fresh AudioBufferSourceNode (or a short-lived graph) already connected to `dest`, ready to `.start()`. Nothing here touches the DOM or the renderer. */
 
 function noiseBuffer(ctx: BaseAudioContext, durationS: number): AudioBuffer {
   const length = Math.max(1, Math.floor(ctx.sampleRate * durationS));

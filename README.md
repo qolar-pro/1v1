@@ -1,6 +1,8 @@
 # BREACH 1v1
 
-A top-down 2.5D tactical shooter for the browser. Counter-Strike-style round structure, economy, and gunplay feel — rendered top-down with a vision cone. Two players, one link, no accounts, no server. Original weapons, original maps, no trademarked names or assets anywhere.
+A first-person tactical shooter for the browser. Counter-Strike-style round structure, economy, and gunplay feel, rendered in real 3D (Three.js, WebGL) with pointer-lock mouse-look. Two players, one link, no accounts, no server. Original weapons, original maps, no trademarked names or assets anywhere.
+
+> This started as a top-down 2.5D build and was converted to full 3D first-person mid-project. See `BUILD_PROGRESS.md` — "The 3D pivot" — for what changed, what didn't, and why. The netcode/sim/rounds/economy layer is untouched by the pivot; only rendering, camera, and input changed.
 
 See `BUILD_PROGRESS.md` for the full build log and Director Decision history.
 
@@ -11,7 +13,7 @@ npm install
 npm run dev
 ```
 
-Open the printed local URL. Pick a nickname and a map, click **Create Match**, and send the share link it gives you to the other player (or open it yourself in a second tab/browser) to join. Works cross-play between a desktop browser (WASD + mouse) and a phone (dual virtual sticks, landscape only).
+Open the printed local URL. Pick a nickname and a map, click **Create Match**, and send the share link it gives you to the other player (or open it yourself in a second tab/browser) to join. Click the game canvas to lock the mouse for looking around (standard FPS pointer-lock — click again if focus is lost). Works cross-play between a desktop browser (WASD + mouse-look) and a phone (virtual joystick + drag-to-look + a dedicated fire button, landscape only).
 
 ## Building for deployment
 
@@ -37,22 +39,22 @@ Pure peer-to-peer over WebRTC via [Trystero](https://github.com/dmotz/trystero) 
    │  → rounds/economy/bomb       │          │                          │
    │                          snapshot @ 30Hz │  → reconcile own state    │
    │ world + match state       │ ───────────> │  → interpolate host        │
-   └────────────────────┘                   │  → render vision/HUD/events │
+   └────────────────────┘                   │  → render 3D scene/HUD      │
                                              └────────────────────┘
 ```
 
-- **Host → client**: snapshots at 30Hz — both players' full combat/economy state (position, hp, armor, weapon, ammo, money, round phase, bomb state) plus one-shot events (shots, plants, round transitions) for effects/audio.
-- **Client → host**: input packets every client render frame, plus discrete buy/rematch requests on their own channel.
+- **Host → client**: snapshots at 30Hz — both players' full combat/economy state (position, facing/yaw, hp, armor, weapon, ammo, money, round phase, bomb state) plus one-shot events (shots, plants, round transitions) for effects/audio.
+- **Client → host**: input packets every client render frame (movement relative to camera facing, camera yaw, buttons), plus discrete buy/rematch requests on their own channel.
 - **Client-side prediction**: the joiner predicts its own movement, ammo, reload, and inaccuracy locally using the exact same code the host runs, then reconciles against each incoming snapshot (small corrections glide in over 100ms; larger ones snap). Damage is never predicted — only the host can kill you.
 - **Remote interpolation**: both sides render the other player ~100ms in the past, interpolated between the two most recent samples, frozen (never extrapolated) past 250ms.
 - **Lag-compensated hitscan**: when resolving a shot, the host rewinds the *target's* hitbox to where it was at the shooter's perceived render time (accounting for the shooter's own interpolation delay, plus half their RTT if they're the client), capped at 250ms.
-- **Fog of war**: both sides independently compute the same wall/smoke-occluded vision cone from authoritative positions, so the opponent is only ever rendered — and its effects (tracers, impacts) only ever shown — when actually visible. Never drawn through a wall.
+- **Vision**: the simulation is still a flat 2D plane underneath (camera pitch is client-only and never affects hit detection), but visibility itself is now handled by real 3D occlusion — walls and props are actual 3D geometry, so the opponent is hidden behind them by ordinary WebGL depth-testing rather than a synthetic 2D vision-cone mask. `sim/raycast.ts`'s line-of-sight check is still used, just for a narrower job now: audio occlusion and whether to spawn cosmetic shot effects.
 
 **The host can cheat.** There is no server to stop it — a modified host client could ignore hit detection, see through walls, grant itself infinite money, etc. Only play with people you trust. This tradeoff is what makes the game free to run with zero infrastructure. There is no anti-cheat, and none is planned — see `BUILD_PROGRESS.md`.
 
 ## Swapping art
 
-All visuals are procedural (drawn in code) — see `src/render/GameScene.ts`, `VisionRenderer.ts`, `Effects.ts`. This is Phase A of the spec's two-phase art plan; Phase B (swapping in generated textures/sprites through a `data/assets.manifest.ts` indirection) was not built this session — see the note at the bottom of `BUILD_PROGRESS.md` for why and what the next step looks like.
+All visuals are procedural (Three.js primitive geometry + flat materials, no textures) — see `src/render/Scene3D.ts` and `Effects.ts`. Generated-texture integration (Replicate) was started but is blocked on an MCP server restart to pick up an API token — see the Phase 8 note in `BUILD_PROGRESS.md`.
 
 ## Project layout
 
@@ -60,10 +62,10 @@ All visuals are procedural (drawn in code) — see `src/render/GameScene.ts`, `V
 src/
   main.ts          bootstrap, room routing, nickname/map selection
   net/              Trystero wiring, host/client sessions, wire protocol
-  sim/              pure simulation code — no Phaser, no DOM, deterministic
-                     (movement, collision, raycast/vision, combat, rounds,
+  sim/              pure simulation code — no renderer, no DOM, deterministic
+                     (movement, collision, raycast/LOS, combat, rounds,
                       economy, grenades — shared verbatim by host and client)
-  render/           Phaser scene, vision mask, effects, HUD, input schemes
+  render/           Three.js scene/camera, effects, HUD wiring, input schemes
   audio/            Web Audio engine + procedural sound synthesis
   ui/               DOM overlays: menu, buy sheet, scoreboard, results,
                      touch controls, connection status

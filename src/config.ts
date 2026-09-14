@@ -45,12 +45,23 @@ export const MELEE_RANGE = PLAYER_RADIUS * 2.4;
 export const MELEE_ARC_RAD = Math.PI / 3;
 export const MAX_HITSCAN_RANGE = 2400;
 
+// --- First-person 3D rendering ---
+// The simulation stays a flat 2D plane (sim.x, sim.y) — mapped to Three.js
+// (x, z) with a fixed height axis. Pitch (looking up/down) is purely a
+// client-side visual — hitscan stays a horizontal ray at EYE_HEIGHT, same as
+// the original top-down design, so none of sim/combat.ts needed to change.
+export const EYE_HEIGHT = 60;
+export const WALL_HEIGHT = 240;
+export const PROP_HEIGHT = 110;
+export const FPS_FOV_DEG = 90;
+export const MOUSE_SENSITIVITY = 0.0022; // radians per pixel of mouse movement
+export const TOUCH_LOOK_SENSITIVITY = 0.006; // radians per pixel of touch drag
+export const MAX_PITCH = Math.PI / 2 - 0.05;
+
 // --- Vision ---
 export const VISION_FOV_DEG = 100;
 export const VISION_FAR = 700;
 export const VISION_NEAR = 90;
-export const VISION_FAR_RAYS = 90;
-export const VISION_NEAR_RAYS = 32;
 export const FLASH_BLIND_MS = 2500;
 export const SMOKE_DURATION_MS = 18000;
 export const SMOKE_RADIUS = 140;

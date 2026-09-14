@@ -1,63 +1,93 @@
-import Phaser from "phaser";
-import { BUTTON_FIRE, BUTTON_RELOAD, BUTTON_USE, BUTTON_WALK } from "../config";
+import { BUTTON_FIRE, BUTTON_RELOAD, BUTTON_USE, BUTTON_WALK, MAX_PITCH, MOUSE_SENSITIVITY } from "../config";
 import type { RawInput, WeaponSlot } from "../sim/types";
 import type { Controls } from "./controls";
 
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
+/**
+ * Mouse-look (pointer-lock) + WASD first-person controls. `yaw` doubles as
+ * the sim-facing angle sent in every input sample; `pitch` is local-only
+ * camera tilt.
+ */
 export class DesktopControls implements Controls {
-  private readonly scene: Phaser.Scene;
-  private keys: Record<string, Phaser.Input.Keyboard.Key>;
+  private yaw = 0;
+  private pitch = 0;
+  private down = new Set<string>();
+  private firing = false;
   private buyToggleQueued = false;
   private throwQueued = false;
 
-  constructor(scene: Phaser.Scene) {
-    this.scene = scene;
-    const kb = scene.input.keyboard!;
-    this.keys = {
-      w: kb.addKey(Phaser.Input.Keyboard.KeyCodes.W),
-      a: kb.addKey(Phaser.Input.Keyboard.KeyCodes.A),
-      s: kb.addKey(Phaser.Input.Keyboard.KeyCodes.S),
-      d: kb.addKey(Phaser.Input.Keyboard.KeyCodes.D),
-      shift: kb.addKey(Phaser.Input.Keyboard.KeyCodes.SHIFT),
-      r: kb.addKey(Phaser.Input.Keyboard.KeyCodes.R),
-      e: kb.addKey(Phaser.Input.Keyboard.KeyCodes.E),
-      b: kb.addKey(Phaser.Input.Keyboard.KeyCodes.B),
-      g: kb.addKey(Phaser.Input.Keyboard.KeyCodes.G),
-      tab: kb.addKey(Phaser.Input.Keyboard.KeyCodes.TAB),
-      one: kb.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
-      two: kb.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
-      three: kb.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
-      four: kb.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
-    };
-    this.keys["b"]!.on("down", () => (this.buyToggleQueued = true));
-    this.keys["g"]!.on("down", () => (this.throwQueued = true));
+  private readonly onKeyDown = (e: KeyboardEvent) => {
+    this.down.add(e.code);
+    if (e.code === "KeyB") this.buyToggleQueued = true;
+    if (e.code === "KeyG") this.throwQueued = true;
+  };
+  private readonly onKeyUp = (e: KeyboardEvent) => this.down.delete(e.code);
+  private readonly onMouseDown = (e: MouseEvent) => {
+    if (e.button === 0) this.firing = true;
+  };
+  private readonly onMouseUp = (e: MouseEvent) => {
+    if (e.button === 0) this.firing = false;
+  };
+  private readonly onMouseMove = (e: MouseEvent) => {
+    if (document.pointerLockElement !== this.canvas) return;
+    this.yaw -= e.movementX * MOUSE_SENSITIVITY;
+    this.pitch -= e.movementY * MOUSE_SENSITIVITY;
+    this.pitch = clamp(this.pitch, -MAX_PITCH, MAX_PITCH);
+  };
+  private readonly onClick = () => {
+    if (document.pointerLockElement !== this.canvas) {
+      void this.canvas.requestPointerLock();
+    }
+  };
+
+  private readonly canvas: HTMLCanvasElement;
+
+  constructor(canvas: HTMLCanvasElement) {
+    this.canvas = canvas;
+    window.addEventListener("keydown", this.onKeyDown);
+    window.addEventListener("keyup", this.onKeyUp);
+    window.addEventListener("mousedown", this.onMouseDown);
+    window.addEventListener("mouseup", this.onMouseUp);
+    window.addEventListener("mousemove", this.onMouseMove);
+    canvas.addEventListener("click", this.onClick);
   }
 
-  sample(_dt: number, localX: number, localY: number): Omit<RawInput, "dt"> {
-    let moveX = 0;
-    let moveY = 0;
-    if (this.keys["a"]!.isDown) moveX -= 1;
-    if (this.keys["d"]!.isDown) moveX += 1;
-    if (this.keys["w"]!.isDown) moveY -= 1;
-    if (this.keys["s"]!.isDown) moveY += 1;
+  sample(_dt: number): Omit<RawInput, "dt"> {
+    let forward = 0;
+    let strafe = 0;
+    if (this.down.has("KeyW")) forward += 1;
+    if (this.down.has("KeyS")) forward -= 1;
+    if (this.down.has("KeyD")) strafe += 1;
+    if (this.down.has("KeyA")) strafe -= 1;
 
-    const pointer = this.scene.input.activePointer;
-    const aimAngle = Phaser.Math.Angle.Between(localX, localY, pointer.worldX, pointer.worldY);
+    const cos = Math.cos(this.yaw);
+    const sin = Math.sin(this.yaw);
+    // forward vector = (cos, sin) in sim (x,y)/(x,z) space; right = forward rotated -90deg.
+    const moveX = cos * forward + sin * strafe;
+    const moveY = sin * forward - cos * strafe;
 
     let buttons = 0;
-    if (this.keys["shift"]!.isDown) buttons |= BUTTON_WALK;
-    if (pointer.leftButtonDown()) buttons |= BUTTON_FIRE;
-    if (this.keys["r"]!.isDown) buttons |= BUTTON_RELOAD;
-    if (this.keys["e"]!.isDown) buttons |= BUTTON_USE;
+    if (this.down.has("ShiftLeft") || this.down.has("ShiftRight")) buttons |= BUTTON_WALK;
+    if (this.firing) buttons |= BUTTON_FIRE;
+    if (this.down.has("KeyR")) buttons |= BUTTON_RELOAD;
+    if (this.down.has("KeyE")) buttons |= BUTTON_USE;
 
     let wantSlot: WeaponSlot | null = null;
-    if (this.keys["one"]!.isDown) wantSlot = "primary";
-    else if (this.keys["two"]!.isDown) wantSlot = "secondary";
-    else if (this.keys["three"]!.isDown || this.keys["four"]!.isDown) wantSlot = "melee";
+    if (this.down.has("Digit1")) wantSlot = "primary";
+    else if (this.down.has("Digit2")) wantSlot = "secondary";
+    else if (this.down.has("Digit3") || this.down.has("Digit4")) wantSlot = "melee";
 
     const throwGrenade = this.throwQueued;
     this.throwQueued = false;
 
-    return { moveX, moveY, aimAngle, buttons, wantSlot, throwGrenade };
+    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade };
+  }
+
+  getPitch(): number {
+    return this.pitch;
   }
 
   consumeBuyToggle(): boolean {
@@ -67,10 +97,15 @@ export class DesktopControls implements Controls {
   }
 
   isScoreboardHeld(): boolean {
-    return this.keys["tab"]!.isDown;
+    return this.down.has("Tab");
   }
 
   destroy(): void {
-    // Phaser tears keys down with the scene; nothing extra to release.
+    window.removeEventListener("keydown", this.onKeyDown);
+    window.removeEventListener("keyup", this.onKeyUp);
+    window.removeEventListener("mousedown", this.onMouseDown);
+    window.removeEventListener("mouseup", this.onMouseUp);
+    window.removeEventListener("mousemove", this.onMouseMove);
+    this.canvas.removeEventListener("click", this.onClick);
   }
 }

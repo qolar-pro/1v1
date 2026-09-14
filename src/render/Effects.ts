@@ -1,87 +1,107 @@
-import Phaser from "phaser";
+import * as THREE from "three";
+import { EYE_HEIGHT } from "../config";
 
 const TRACER_MS = 60;
 const FLASH_MS = 50;
+const IMPACT_MS = 8000;
 const IMPACT_MAX = 40;
 
-/** Cheap, short-lived cosmetic effects: muzzle flash, tracers, impact decals, hit-flash, damage indicator. */
+/** Short-lived cosmetic effects in the 3D scene: muzzle flash, tracers, impact billboards, hit-flash, screen shake. */
 export class Effects {
-  private readonly scene: Phaser.Scene;
-  private impacts: Phaser.GameObjects.Arc[] = [];
-  private damageIndicatorGfx: Phaser.GameObjects.Graphics;
+  private readonly scene: THREE.Scene;
+  private readonly camera: THREE.PerspectiveCamera;
+  private impacts: THREE.Sprite[] = [];
+  private impactMaterial: THREE.SpriteMaterial;
+  private shakeUntil = 0;
+  private shakeIntensity = 0;
 
-  constructor(scene: Phaser.Scene) {
+  constructor(scene: THREE.Scene, camera: THREE.PerspectiveCamera) {
     this.scene = scene;
-    this.damageIndicatorGfx = scene.add.graphics().setScrollFactor(0).setDepth(50).setAlpha(0);
+    this.camera = camera;
+    const canvas = document.createElement("canvas");
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext("2d")!;
+    ctx.fillStyle = "#1a1a1a";
+    ctx.beginPath();
+    ctx.arc(8, 8, 6, 0, Math.PI * 2);
+    ctx.fill();
+    const tex = new THREE.CanvasTexture(canvas);
+    this.impactMaterial = new THREE.SpriteMaterial({ map: tex, depthWrite: false });
   }
 
   muzzleFlash(x: number, y: number, angle: number): void {
-    const flash = this.scene.add.circle(x + Math.cos(angle) * 22, y + Math.sin(angle) * 22, 8, 0xfff2c4, 0.95);
-    flash.setDepth(30);
-    this.scene.tweens.add({ targets: flash, alpha: 0, scale: 1.6, duration: FLASH_MS, onComplete: () => flash.destroy() });
+    const fx = x + Math.cos(angle) * 20;
+    const fz = y + Math.sin(angle) * 20;
+    const light = new THREE.PointLight(0xfff2c4, 6, 140, 2);
+    light.position.set(fx, EYE_HEIGHT, fz);
+    this.scene.add(light);
+    window.setTimeout(() => this.scene.remove(light), FLASH_MS);
   }
 
   tracer(x1: number, y1: number, x2: number, y2: number): void {
-    const line = this.scene.add.line(0, 0, x1, y1, x2, y2, 0xfff6d8, 0.9).setLineWidth(1.5);
-    line.setOrigin(0, 0);
-    line.setDepth(29);
-    this.scene.tweens.add({ targets: line, alpha: 0, duration: TRACER_MS, onComplete: () => line.destroy() });
+    const from = new THREE.Vector3(x1, EYE_HEIGHT, y1);
+    const to = new THREE.Vector3(x2, EYE_HEIGHT, y2);
+    const geom = new THREE.BufferGeometry().setFromPoints([from, to]);
+    const mat = new THREE.LineBasicMaterial({ color: 0xfff6d8, transparent: true, opacity: 0.9 });
+    const line = new THREE.Line(geom, mat);
+    this.scene.add(line);
+    const start = performance.now();
+    const tick = () => {
+      const t = (performance.now() - start) / TRACER_MS;
+      if (t >= 1) {
+        this.scene.remove(line);
+        geom.dispose();
+        mat.dispose();
+        return;
+      }
+      mat.opacity = 0.9 * (1 - t);
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
   }
 
   impact(x: number, y: number): void {
-    const dot = this.scene.add.circle(x, y, 2.5, 0x2a2a2a, 0.8).setDepth(5);
-    this.impacts.push(dot);
-    if (this.impacts.length > IMPACT_MAX) this.impacts.shift()?.destroy();
+    const sprite = new THREE.Sprite(this.impactMaterial);
+    sprite.position.set(x, EYE_HEIGHT + (Math.random() - 0.5) * 20, y);
+    sprite.scale.set(4, 4, 1);
+    this.scene.add(sprite);
+    this.impacts.push(sprite);
+    if (this.impacts.length > IMPACT_MAX) {
+      const old = this.impacts.shift();
+      if (old) this.scene.remove(old);
+    }
+    window.setTimeout(() => {
+      this.scene.remove(sprite);
+      const idx = this.impacts.indexOf(sprite);
+      if (idx >= 0) this.impacts.splice(idx, 1);
+    }, IMPACT_MS);
   }
 
-  hitFlash(target: Phaser.GameObjects.Arc, baseColor: number): void {
-    target.setFillStyle(0xffffff);
-    this.scene.time.delayedCall(50, () => target.setFillStyle(baseColor));
-  }
-
-  screenShake(intensity = 0.004, durationMs = 70): void {
-    this.scene.cameras.main.shake(durationMs, intensity);
-  }
-
-  /** Flashes a red wedge on the edge of the screen pointing toward an angle (radians, world-space) the damage came from. */
-  damageIndicator(cameraAngleToSource: number): void {
-    const cam = this.scene.cameras.main;
-    const cx = cam.width / 2;
-    const cy = cam.height / 2;
-    const r = Math.min(cam.width, cam.height) * 0.42;
-    const px = cx + Math.cos(cameraAngleToSource) * r;
-    const py = cy + Math.sin(cameraAngleToSource) * r;
-
-    this.damageIndicatorGfx.clear();
-    this.damageIndicatorGfx.fillStyle(0xff3b3b, 0.85);
-    const spread = 0.35;
-    this.damageIndicatorGfx.beginPath();
-    this.damageIndicatorGfx.moveTo(px, py);
-    this.damageIndicatorGfx.lineTo(
-      cx + Math.cos(cameraAngleToSource - spread) * (r - 40),
-      cy + Math.sin(cameraAngleToSource - spread) * (r - 40),
-    );
-    this.damageIndicatorGfx.lineTo(
-      cx + Math.cos(cameraAngleToSource + spread) * (r - 40),
-      cy + Math.sin(cameraAngleToSource + spread) * (r - 40),
-    );
-    this.damageIndicatorGfx.closePath();
-    this.damageIndicatorGfx.fillPath();
-    this.damageIndicatorGfx.setAlpha(1);
-    this.scene.tweens.add({ targets: this.damageIndicatorGfx, alpha: 0, duration: 500 });
-  }
-
-  shellCasing(x: number, y: number, angle: number): void {
-    const perp = angle + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
-    const casing = this.scene.add.rectangle(x, y, 3, 1.5, 0xd8c060, 0.9).setDepth(4);
-    const dist = 10 + Math.random() * 10;
-    this.scene.tweens.add({
-      targets: casing,
-      x: x + Math.cos(perp) * dist,
-      y: y + Math.sin(perp) * dist,
-      alpha: 0,
-      duration: 350,
-      onComplete: () => casing.destroy(),
+  hitFlash(mesh: THREE.Object3D): void {
+    mesh.traverse((child) => {
+      if (child instanceof THREE.Mesh && child.material instanceof THREE.MeshStandardMaterial) {
+        const original = child.material.emissive.clone();
+        child.material.emissive.setHex(0xffffff);
+        window.setTimeout(() => child.material instanceof THREE.MeshStandardMaterial && child.material.emissive.copy(original), 60);
+      }
     });
+  }
+
+  screenShake(intensity = 0.02, durationMs = 70): void {
+    this.shakeUntil = performance.now() + durationMs;
+    this.shakeIntensity = intensity;
+  }
+
+  /** Call once per frame after setting the camera's real position — applies a small random offset. */
+  applyShake(): void {
+    if (performance.now() >= this.shakeUntil) return;
+    this.camera.position.x += (Math.random() - 0.5) * this.shakeIntensity;
+    this.camera.position.y += (Math.random() - 0.5) * this.shakeIntensity;
+  }
+
+  shellCasing(_x: number, _y: number, _angle: number): void {
+    // Cosmetic-only and easy to skip in 3D without a ground-relative particle
+    // system; omitted to keep the effects budget on muzzle/tracer/impact/hit.
   }
 }

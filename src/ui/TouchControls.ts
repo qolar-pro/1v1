@@ -1,10 +1,13 @@
-import { BUTTON_FIRE, BUTTON_USE, BUTTON_WALK } from "../config";
+import { BUTTON_FIRE, BUTTON_USE, BUTTON_WALK, MAX_PITCH, TOUCH_LOOK_SENSITIVITY } from "../config";
 import type { RawInput, WeaponSlot } from "../sim/types";
 import type { Controls } from "../render/controls";
 
+function clamp(v: number, lo: number, hi: number): number {
+  return v < lo ? lo : v > hi ? hi : v;
+}
+
 const STICK_RADIUS = 55;
 const WALK_THRESHOLD = 0.55;
-const FIRE_DEADZONE = 0.35;
 
 interface StickState {
   pointerId: number | null;
@@ -12,7 +15,7 @@ interface StickState {
   originY: number;
   dx: number;
   dy: number;
-  mag: number; // 0..1
+  mag: number;
 }
 
 function freshStick(): StickState {
@@ -20,27 +23,29 @@ function freshStick(): StickState {
 }
 
 /**
- * Dual virtual sticks: left thumb moves, right thumb aims and fires past a
- * deadzone (no separate fire button — matches the spec's "twin-stick, not
- * a fire button" guidance). Contextual bottom-right buttons for reload,
- * grenade, use/plant-defuse, and cycling weapons.
+ * Mobile first-person controls: left thumb is a virtual joystick (move,
+ * relative to camera facing — same convention as WASD), the right half of
+ * the screen is a look-around drag surface (standard mobile-FPS pattern),
+ * and firing is a dedicated button since "aim" is always screen-center now.
  */
 export class TouchControls implements Controls {
   private root: HTMLDivElement;
   private leftBase: HTMLDivElement;
   private leftThumb: HTMLDivElement;
-  private rightBase: HTMLDivElement;
-  private rightThumb: HTMLDivElement;
-
   private left = freshStick();
-  private right = freshStick();
 
+  private yaw = 0;
+  private pitch = 0;
+  private lookPointerId: number | null = null;
+  private lookLastX = 0;
+  private lookLastY = 0;
+
+  private firing = false;
   private useHeld = false;
   private reloadQueued = false;
   private throwQueued = false;
   private buyToggleQueued = false;
   private wantSlotQueued: WeaponSlot | null = null;
-  private lastAimAngle = 0;
 
   constructor() {
     this.root = document.createElement("div");
@@ -49,11 +54,10 @@ export class TouchControls implements Controls {
       <div class="stick-zone stick-zone-left" id="tc-left-zone">
         <div class="stick-base" id="tc-left-base"><div class="stick-thumb" id="tc-left-thumb"></div></div>
       </div>
-      <div class="stick-zone stick-zone-right" id="tc-right-zone">
-        <div class="stick-base" id="tc-right-base"><div class="stick-thumb" id="tc-right-thumb"></div></div>
-      </div>
+      <div class="stick-zone stick-zone-right" id="tc-look-zone"></div>
       <div class="tc-buttons">
         <button class="tc-btn" id="tc-reload">R</button>
+        <button class="tc-btn tc-btn-fire" id="tc-fire">FIRE</button>
         <button class="tc-btn" id="tc-use">USE</button>
         <button class="tc-btn" id="tc-grenade">G</button>
         <button class="tc-btn" id="tc-swap">SWAP</button>
@@ -64,11 +68,13 @@ export class TouchControls implements Controls {
 
     this.leftBase = document.getElementById("tc-left-base") as HTMLDivElement;
     this.leftThumb = document.getElementById("tc-left-thumb") as HTMLDivElement;
-    this.rightBase = document.getElementById("tc-right-base") as HTMLDivElement;
-    this.rightThumb = document.getElementById("tc-right-thumb") as HTMLDivElement;
+    this.bindMoveStick(document.getElementById("tc-left-zone")!);
+    this.bindLookZone(document.getElementById("tc-look-zone")!);
 
-    this.bindZone(document.getElementById("tc-left-zone")!, this.left, this.leftBase, this.leftThumb);
-    this.bindZone(document.getElementById("tc-right-zone")!, this.right, this.rightBase, this.rightThumb);
+    const fireBtn = document.getElementById("tc-fire")!;
+    fireBtn.addEventListener("pointerdown", () => (this.firing = true));
+    fireBtn.addEventListener("pointerup", () => (this.firing = false));
+    fireBtn.addEventListener("pointercancel", () => (this.firing = false));
 
     const useBtn = document.getElementById("tc-use")!;
     useBtn.addEventListener("pointerdown", () => (this.useHeld = true));
@@ -79,7 +85,7 @@ export class TouchControls implements Controls {
     document.getElementById("tc-grenade")!.addEventListener("pointerdown", () => (this.throwQueued = true));
     document.getElementById("tc-buy")!.addEventListener("pointerdown", () => (this.buyToggleQueued = true));
 
-    let swapCycle: WeaponSlot[] = ["primary", "secondary", "melee"];
+    const swapCycle: WeaponSlot[] = ["primary", "secondary", "melee"];
     let swapIdx = 1;
     document.getElementById("tc-swap")!.addEventListener("pointerdown", () => {
       swapIdx = (swapIdx + 1) % swapCycle.length;
@@ -87,13 +93,14 @@ export class TouchControls implements Controls {
     });
   }
 
-  private bindZone(zone: HTMLElement, stick: StickState, base: HTMLDivElement, thumb: HTMLDivElement): void {
+  private bindMoveStick(zone: HTMLElement): void {
+    const stick = this.left;
     const reset = () => {
       stick.pointerId = null;
       stick.dx = 0;
       stick.dy = 0;
       stick.mag = 0;
-      base.style.opacity = "0";
+      this.leftBase.style.opacity = "0";
     };
     reset();
 
@@ -103,13 +110,11 @@ export class TouchControls implements Controls {
       const rect = zone.getBoundingClientRect();
       stick.originX = e.clientX;
       stick.originY = e.clientY;
-      base.style.left = `${e.clientX - rect.left}px`;
-      base.style.top = `${e.clientY - rect.top}px`;
-      base.style.opacity = "1";
-      thumb.style.transform = `translate(-50%, -50%)`;
+      this.leftBase.style.left = `${e.clientX - rect.left}px`;
+      this.leftBase.style.top = `${e.clientY - rect.top}px`;
+      this.leftBase.style.opacity = "1";
       zone.setPointerCapture(e.pointerId);
     });
-
     zone.addEventListener("pointermove", (e) => {
       if (stick.pointerId !== e.pointerId) return;
       const dx = e.clientX - stick.originX;
@@ -120,9 +125,8 @@ export class TouchControls implements Controls {
       stick.dx = Math.cos(angle) * clamped;
       stick.dy = Math.sin(angle) * clamped;
       stick.mag = clamped / STICK_RADIUS;
-      thumb.style.transform = `translate(${stick.dx - 0}px, ${stick.dy - 0}px) translate(-50%, -50%)`;
+      this.leftThumb.style.transform = `translate(${stick.dx}px, ${stick.dy}px) translate(-50%, -50%)`;
     });
-
     const end = (e: PointerEvent) => {
       if (stick.pointerId !== e.pointerId) return;
       reset();
@@ -131,37 +135,59 @@ export class TouchControls implements Controls {
     zone.addEventListener("pointercancel", end);
   }
 
+  private bindLookZone(zone: HTMLElement): void {
+    zone.addEventListener("pointerdown", (e) => {
+      if (this.lookPointerId !== null) return;
+      this.lookPointerId = e.pointerId;
+      this.lookLastX = e.clientX;
+      this.lookLastY = e.clientY;
+      zone.setPointerCapture(e.pointerId);
+    });
+    zone.addEventListener("pointermove", (e) => {
+      if (this.lookPointerId !== e.pointerId) return;
+      const dx = e.clientX - this.lookLastX;
+      const dy = e.clientY - this.lookLastY;
+      this.lookLastX = e.clientX;
+      this.lookLastY = e.clientY;
+      this.yaw -= dx * TOUCH_LOOK_SENSITIVITY;
+      this.pitch = clamp(this.pitch - dy * TOUCH_LOOK_SENSITIVITY, -MAX_PITCH, MAX_PITCH);
+    });
+    const end = (e: PointerEvent) => {
+      if (this.lookPointerId !== e.pointerId) return;
+      this.lookPointerId = null;
+    };
+    zone.addEventListener("pointerup", end);
+    zone.addEventListener("pointercancel", end);
+  }
+
   sample(_dt: number): Omit<RawInput, "dt"> {
-    const moveX = this.left.mag > 0.08 ? this.left.dx / STICK_RADIUS : 0;
-    const moveY = this.left.mag > 0.08 ? this.left.dy / STICK_RADIUS : 0;
+    const forward = this.left.mag > 0.08 ? -this.left.dy / STICK_RADIUS : 0;
+    const strafe = this.left.mag > 0.08 ? this.left.dx / STICK_RADIUS : 0;
 
-    let aimAngle = this.lastAimAngle;
+    const cos = Math.cos(this.yaw);
+    const sin = Math.sin(this.yaw);
+    const moveX = cos * forward + sin * strafe;
+    const moveY = sin * forward - cos * strafe;
+
     let buttons = 0;
-    if (this.right.mag > FIRE_DEADZONE) {
-      aimAngle = Math.atan2(this.right.dy, this.right.dx);
-      this.lastAimAngle = aimAngle;
-      buttons |= BUTTON_FIRE;
-    } else if (this.left.mag > 0.08) {
-      aimAngle = Math.atan2(this.left.dy, this.left.dx);
-      this.lastAimAngle = aimAngle;
-    }
-
     if (this.left.mag > 0 && this.left.mag < WALK_THRESHOLD) buttons |= BUTTON_WALK;
+    if (this.firing) buttons |= BUTTON_FIRE;
     if (this.useHeld) buttons |= BUTTON_USE;
+    if (this.reloadQueued) {
+      this.reloadQueued = false;
+      buttons |= 1 << 2; // BUTTON_RELOAD — one-frame tap registers as a level trigger
+    }
 
     const wantSlot = this.wantSlotQueued;
     this.wantSlotQueued = null;
     const throwGrenade = this.throwQueued;
     this.throwQueued = false;
 
-    if (this.reloadQueued) {
-      this.reloadQueued = false;
-      // Reload is level-triggered in the sim (BUTTON_RELOAD), but a tap should
-      // still register — OR it in for this one frame via buttons directly.
-      buttons |= 1 << 2;
-    }
+    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade };
+  }
 
-    return { moveX, moveY, aimAngle, buttons, wantSlot, throwGrenade };
+  getPitch(): number {
+    return this.pitch;
   }
 
   consumeBuyToggle(): boolean {

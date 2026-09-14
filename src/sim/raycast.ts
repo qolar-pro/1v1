@@ -109,48 +109,15 @@ function shortestAngleDiff(a: number, b: number): number {
   return diff;
 }
 
-/** Fan of ray-hit points sweeping [centerAngle - halfSpread, centerAngle + halfSpread]. */
-export function sweepRays(
-  ox: number,
-  oy: number,
-  centerAngle: number,
-  halfSpread: number,
-  maxDist: number,
-  rayCount: number,
-  segments: readonly Segment[],
-  smoke: readonly OccludingCircle[] = [],
-): RayHit[] {
-  const hits: RayHit[] = [];
-  const start = centerAngle - halfSpread;
-  const step = rayCount > 1 ? (halfSpread * 2) / (rayCount - 1) : 0;
-  for (let i = 0; i < rayCount; i++) {
-    const angle = start + step * i;
-    hits.push(raycast(ox, oy, Math.cos(angle), Math.sin(angle), maxDist, segments, smoke));
-  }
-  return hits;
-}
-
 const FOV_HALF_RAD = (VISION_FOV_DEG * Math.PI) / 180 / 2;
 
 /**
- * Cone (far, FOV-limited) + near-radius (360°, wall-occluded) visibility rays
- * for the local player, used to build the fog-of-war mask.
+ * Whether `target` is visible to a viewer standing at (ox,oy) facing
+ * `facingAngle` — a near-radius plus an FOV-limited cone, both wall/smoke
+ * occluded. In the 3D first-person build this is no longer used to decide
+ * whether to *render* the opponent (real 3D occlusion handles that), but it
+ * still backs flashbang "are you looking at it" checks in sim/grenades.ts.
  */
-export function computeVisionRays(
-  ox: number,
-  oy: number,
-  facingAngle: number,
-  segments: readonly Segment[],
-  farRayCount: number,
-  nearRayCount: number,
-  smoke: readonly OccludingCircle[] = [],
-): { cone: RayHit[]; near: RayHit[] } {
-  const cone = sweepRays(ox, oy, facingAngle, FOV_HALF_RAD, VISION_FAR, farRayCount, segments, smoke);
-  const near = sweepRays(ox, oy, 0, Math.PI, VISION_NEAR, nearRayCount, segments, smoke);
-  return { cone, near };
-}
-
-/** Whether `target` is visible to a viewer standing at (ox,oy) facing `facingAngle`. */
 export function canSee(
   ox: number,
   oy: number,

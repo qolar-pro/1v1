@@ -13,6 +13,19 @@
   box-sizing: border-box;
 }
 
+/*
+ * Every full-screen overlay in this app is toggled via the `hidden` DOM
+ * property, but several of them also set `display: flex/block` via an ID
+ * selector — which, being higher-specificity than the browser's default
+ * `[hidden] { display: none }` rule, silently wins and leaves the overlay
+ * covering (and click-intercepting) the whole screen even while "hidden".
+ * This single !important rule makes `hidden` actually hide, permanently,
+ * for every element in the app rather than patching each overlay by hand.
+ */
+[hidden] {
+  display: none !important;
+}
+
 html,
 body {
   margin: 0;
@@ -634,6 +647,67 @@ button.primary:hover,
 
 .conn-panel .spinner {
   margin-bottom: 1rem;
+}
+
+#crosshair {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  z-index: 15;
+  pointer-events: none;
+  --gap: 6px;
+}
+
+#crosshair .ch {
+  position: absolute;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+#crosshair .ch-l,
+#crosshair .ch-r {
+  width: 8px;
+  height: 2px;
+  top: -1px;
+}
+
+#crosshair .ch-l {
+  right: var(--gap);
+}
+
+#crosshair .ch-r {
+  left: var(--gap);
+}
+
+#crosshair .ch-t,
+#crosshair .ch-b {
+  width: 2px;
+  height: 8px;
+  left: -1px;
+}
+
+#crosshair .ch-t {
+  bottom: var(--gap);
+}
+
+#crosshair .ch-b {
+  top: var(--gap);
+}
+
+#look-prompt {
+  position: fixed;
+  top: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 17;
+  background: rgba(10, 10, 12, 0.75);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.4rem 0.9rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  pointer-events: none;
 }
 
 #debug-hud {

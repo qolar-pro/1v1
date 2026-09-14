@@ -1,6 +1,5 @@
-import Phaser from "phaser";
 import "./ui/styles.css";
-import { GameScene } from "./render/GameScene";
+import { Scene3D } from "./render/Scene3D";
 import { HostSession } from "./net/host";
 import { ClientSession } from "./net/client";
 import { connectRoom, makeRoomId } from "./net/trystero";
@@ -30,21 +29,10 @@ function shareUrl(roomId: string): string {
 function launchGame(session: NetSession): void {
   clearOverlay();
   hideOverlay();
-  const game = new Phaser.Game({
-    type: Phaser.AUTO,
-    parent: "app",
-    width: window.innerWidth,
-    height: window.innerHeight,
-    backgroundColor: "#141414",
-    scale: {
-      mode: Phaser.Scale.RESIZE,
-      width: window.innerWidth,
-      height: window.innerHeight,
-    },
-    scene: new GameScene(session),
-  });
+  const container = document.getElementById("app")!;
+  const scene = new Scene3D(session, container);
   if (import.meta.env.DEV) {
-    (window as unknown as { __breachGame: Phaser.Game; __breachSession: NetSession }).__breachGame = game;
+    (window as unknown as { __breachScene: Scene3D; __breachSession: NetSession }).__breachScene = scene;
     (window as unknown as { __breachSession: NetSession }).__breachSession = session;
   }
 }

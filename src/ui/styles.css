@@ -1,0 +1,142 @@
+:root {
+  color-scheme: dark;
+  --bg: #0b0b0d;
+  --panel: #17181b;
+  --border: #2a2b30;
+  --text: #e8e9ec;
+  --sub: #9a9ca3;
+  --teal: #2dd4bf;
+  --amber: #f59e0b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  overflow: hidden;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}
+
+#app canvas {
+  display: block;
+}
+
+#ui-overlay {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #16171a 0%, #08080a 100%);
+  z-index: 10;
+}
+
+.panel {
+  text-align: center;
+  padding: 2.5rem 3rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 320px;
+}
+
+.panel h1 {
+  margin: 0 0 0.5rem;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.panel .accent {
+  color: var(--teal);
+}
+
+.panel .sub {
+  color: var(--sub);
+  margin: 0 0 1.5rem;
+  font-size: 0.95rem;
+}
+
+.panel .fine {
+  color: #6b6d73;
+  font-size: 0.75rem;
+  max-width: 320px;
+  margin-top: 1.25rem;
+  line-height: 1.4;
+}
+
+button.primary,
+#copy-btn {
+  background: var(--teal);
+  color: #06201c;
+  border: none;
+  padding: 0.75rem 1.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+button.primary:hover,
+#copy-btn:hover {
+  filter: brightness(1.1);
+}
+
+.link-row {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.link-row input {
+  flex: 1;
+  background: #0e0f11;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
+.spinner {
+  margin: 0 auto;
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--border);
+  border-top-color: var(--teal);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+#debug-hud {
+  position: fixed;
+  top: 8px;
+  left: 8px;
+  z-index: 20;
+  background: rgba(0, 0, 0, 0.55);
+  color: #8ef7d7;
+  font-family: "Consolas", monospace;
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  pointer-events: none;
+  white-space: pre;
+}

@@ -1,23 +1,16 @@
-import { WORLD_HEIGHT, WORLD_WIDTH } from "../config";
+import type { MapDef } from "../data/maps/types";
 import { createPlayerState, HOST_SLOT, JOINER_SLOT, type Slot, type WorldState } from "./types";
 
-/**
- * Phase 1 has no map geometry yet — just two spawn points on an empty floor.
- * From Phase 2 onward, spawn points come from data/maps/*.json.
- */
-export function defaultSpawn(slot: Slot): { x: number; y: number } {
-  const cy = WORLD_HEIGHT / 2;
-  return slot === HOST_SLOT
-    ? { x: WORLD_WIDTH * 0.25, y: cy }
-    : { x: WORLD_WIDTH * 0.75, y: cy };
+/** Round 1 always starts with host as Raider, joiner as Warden; rounds.ts swaps sides at round 6. */
+export function defaultSpawn(slot: Slot, map: MapDef): { x: number; y: number } {
+  return slot === HOST_SLOT ? { ...map.raiderSpawn } : { ...map.wardenSpawn };
 }
 
-export function createWorld(): WorldState {
+export function createWorld(map: MapDef): WorldState {
+  const hostSpawn = defaultSpawn(HOST_SLOT, map);
+  const joinerSpawn = defaultSpawn(JOINER_SLOT, map);
   return {
     tick: 0,
-    players: [
-      createPlayerState(defaultSpawn(HOST_SLOT).x, defaultSpawn(HOST_SLOT).y),
-      createPlayerState(defaultSpawn(JOINER_SLOT).x, defaultSpawn(JOINER_SLOT).y),
-    ],
+    players: [createPlayerState(hostSpawn.x, hostSpawn.y, "raider"), createPlayerState(joinerSpawn.x, joinerSpawn.y, "warden")],
   };
 }

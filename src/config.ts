@@ -39,3 +39,53 @@ export const BUTTON_WALK = 1 << 0;
 export const BUTTON_FIRE = 1 << 1;
 export const BUTTON_RELOAD = 1 << 2;
 export const BUTTON_USE = 1 << 3;
+export const BUTTON_SCOPE = 1 << 4;
+export const DEFUSE_RADIUS = 100;
+export const MELEE_RANGE = PLAYER_RADIUS * 2.4;
+export const MELEE_ARC_RAD = Math.PI / 3;
+export const MAX_HITSCAN_RANGE = 2400;
+
+// --- Vision ---
+export const VISION_FOV_DEG = 100;
+export const VISION_FAR = 700;
+export const VISION_NEAR = 90;
+export const VISION_FAR_RAYS = 90;
+export const VISION_NEAR_RAYS = 32;
+export const FLASH_BLIND_MS = 2500;
+export const SMOKE_DURATION_MS = 18000;
+export const SMOKE_RADIUS = 140;
+
+// --- Combat ---
+export const HEADSHOT_MULT = 4;
+export const CHEST_MULT = 1;
+export const LEG_MULT = 0.75;
+export const HEAD_ZONE_RADIUS = 0.35; // fraction of PLAYER_RADIUS, facing-relative cone
+export const LEG_ZONE_RADIUS = 0.35;
+export const ARMOR_ABSORB = 0.5;
+export const ARMOR_DEGRADE_PER_HIT = 0.86; // armor value multiplier per hit that connects while armored
+export const MAX_HEALTH = 100;
+export const MAX_ARMOR = 100;
+export const RECOIL_RECOVER_S = 0.4;
+export const SPRAY_PATTERN_LENGTH = 30;
+/** Cap on lag-compensation rewind, mirrors MAX_REWIND_MS above (kept for clarity at call sites). */
+export const HITSCAN_REWIND_CAP_MS = MAX_REWIND_MS;
+
+// --- Rounds / match ---
+export const ROUNDS_TO_WIN = 7;
+export const ROUNDS_TOTAL_MAX = 13;
+export const SIDE_SWAP_AFTER_ROUND = 6;
+export const FREEZE_TIME_S = 12;
+export const ROUND_TIME_S = 95;
+export const ROUND_END_TIME_S = 4;
+export const BOMB_TIMER_S = 35;
+export const DEFUSE_TIME_S = 5;
+export const DEFUSE_TIME_KIT_S = 2.5;
+export const PLANT_TIME_S = 3.2;
+
+// --- Economy ---
+export const START_MONEY = 800;
+export const MONEY_CAP = 16000;
+export const ROUND_WIN_REWARD = 3250;
+export const LOSS_BONUS_LADDER = [1400, 1900, 2400, 2900, 3400];
+export const PLANT_BONUS = 300;
+export const DEFUSE_BONUS = 300;

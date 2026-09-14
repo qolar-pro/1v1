@@ -1,4 +1,4 @@
-import { BUTTON_FIRE, BUTTON_USE, BUTTON_WALK, MAX_PITCH, TOUCH_LOOK_SENSITIVITY } from "../config";
+import { BUTTON_FIRE, BUTTON_JUMP, BUTTON_USE, BUTTON_WALK, MAX_PITCH, TOUCH_LOOK_SENSITIVITY } from "../config";
 import type { RawInput, WeaponSlot } from "../sim/types";
 import type { Controls } from "../render/controls";
 
@@ -42,6 +42,7 @@ export class TouchControls implements Controls {
 
   private firing = false;
   private useHeld = false;
+  private jumpHeld = false;
   private reloadQueued = false;
   private throwQueued = false;
   private buyToggleQueued = false;
@@ -59,6 +60,7 @@ export class TouchControls implements Controls {
         <button class="tc-btn" id="tc-reload">R</button>
         <button class="tc-btn tc-btn-fire" id="tc-fire">FIRE</button>
         <button class="tc-btn" id="tc-use">USE</button>
+        <button class="tc-btn" id="tc-jump">JUMP</button>
         <button class="tc-btn" id="tc-grenade">G</button>
         <button class="tc-btn" id="tc-swap">SWAP</button>
         <button class="tc-btn tc-btn-buy" id="tc-buy">BUY</button>
@@ -80,6 +82,11 @@ export class TouchControls implements Controls {
     useBtn.addEventListener("pointerdown", () => (this.useHeld = true));
     useBtn.addEventListener("pointerup", () => (this.useHeld = false));
     useBtn.addEventListener("pointercancel", () => (this.useHeld = false));
+
+    const jumpBtn = document.getElementById("tc-jump")!;
+    jumpBtn.addEventListener("pointerdown", () => (this.jumpHeld = true));
+    jumpBtn.addEventListener("pointerup", () => (this.jumpHeld = false));
+    jumpBtn.addEventListener("pointercancel", () => (this.jumpHeld = false));
 
     document.getElementById("tc-reload")!.addEventListener("pointerdown", () => (this.reloadQueued = true));
     document.getElementById("tc-grenade")!.addEventListener("pointerdown", () => (this.throwQueued = true));
@@ -173,6 +180,7 @@ export class TouchControls implements Controls {
     if (this.left.mag > 0 && this.left.mag < WALK_THRESHOLD) buttons |= BUTTON_WALK;
     if (this.firing) buttons |= BUTTON_FIRE;
     if (this.useHeld) buttons |= BUTTON_USE;
+    if (this.jumpHeld) buttons |= BUTTON_JUMP;
     if (this.reloadQueued) {
       this.reloadQueued = false;
       buttons |= 1 << 2; // BUTTON_RELOAD — one-frame tap registers as a level trigger
@@ -183,7 +191,7 @@ export class TouchControls implements Controls {
     const throwGrenade = this.throwQueued;
     this.throwQueued = false;
 
-    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade };
+    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade, pitch: this.pitch };
   }
 
   getPitch(): number {

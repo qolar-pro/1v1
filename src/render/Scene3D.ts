@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { NetSession } from "../net/session";
 import { HOST_SLOT, otherSlot, type PlayerState, type Slot } from "../sim/types";
 import { hasLineOfSight, wallsToSegments, type Segment } from "../sim/raycast";
+import { pitchedHeightAt } from "../sim/combat";
 import { DISCONNECT_GRACE_MS, EYE_HEIGHT, FPS_FOV_DEG, PLAYER_RADIUS, PROP_HEIGHT, WALL_HEIGHT } from "../config";
 import type { GameEvent } from "../sim/events";
 import { getWeapon } from "../data/weapons";
@@ -231,7 +232,7 @@ export class Scene3D {
 
     const pitch = this.controls.getPitch();
     const yaw = localPlayer.angle;
-    this.camera.position.set(localPlayer.x, EYE_HEIGHT, localPlayer.y);
+    this.camera.position.set(localPlayer.x, EYE_HEIGHT + localPlayer.jumpZ, localPlayer.y);
     const dir = new THREE.Vector3(Math.cos(yaw) * Math.cos(pitch), Math.sin(pitch), Math.sin(yaw) * Math.cos(pitch));
     this.camera.lookAt(this.camera.position.clone().add(dir));
     this.effects.applyShake();
@@ -245,11 +246,11 @@ export class Scene3D {
     const remoteVisible = remotePlayer.connected && remotePlayer.alive;
     this.remoteMesh.visible = remoteVisible;
     if (remoteVisible) {
-      this.remoteMesh.position.set(remotePlayer.x, 0, remotePlayer.y);
+      this.remoteMesh.position.set(remotePlayer.x, remotePlayer.jumpZ, remotePlayer.y);
       this.remoteMesh.rotation.y = Math.PI / 2 - remotePlayer.angle;
     }
 
-    for (const ev of this.session.drainEvents()) this.handleEvent(ev, localPlayer, remoteSlot, localSlot);
+    for (const ev of this.session.drainEvents()) this.handleEvent(ev, localPlayer, remotePlayer, remoteSlot, localSlot);
 
     if (this.controls.isScoreboardHeld()) {
       const localRole = localSlot === matchView.raiderSlot ? "raider" : "warden";
@@ -308,20 +309,27 @@ export class Scene3D {
     this.crosshairEl.style.setProperty("--gap", `${gap}px`);
   }
 
-  private handleEvent(ev: GameEvent, localPlayer: PlayerState, remoteSlot: Slot, localSlot: Slot): void {
+  private handleEvent(ev: GameEvent, localPlayer: PlayerState, remotePlayer: PlayerState, remoteSlot: Slot, localSlot: Slot): void {
     switch (ev.type) {
       case "shot": {
+        const shooterJumpZ = ev.shooter === localSlot ? localPlayer.jumpZ : remotePlayer.jumpZ;
+        const originHeight = EYE_HEIGHT + shooterJumpZ;
         const sawShooter = ev.shooter === localSlot || hasLineOfSight(localPlayer.x, localPlayer.y, ev.x, ev.y, this.segments);
+        let hitHeight = originHeight;
+        if (ev.hitX !== undefined && ev.hitY !== undefined) {
+          const horizontalDist = Math.hypot(ev.hitX - ev.x, ev.hitY - ev.y);
+          hitHeight = pitchedHeightAt(originHeight, ev.pitch, horizontalDist);
+        }
         if (sawShooter) {
-          this.effects.muzzleFlash(ev.x, ev.y, ev.angle);
-          if (ev.hitX !== undefined && ev.hitY !== undefined) this.effects.tracer(ev.x, ev.y, ev.hitX, ev.hitY);
+          this.effects.muzzleFlash(ev.x, ev.y, originHeight, ev.angle);
+          if (ev.hitX !== undefined && ev.hitY !== undefined) this.effects.tracer(ev.x, ev.y, originHeight, ev.hitX, ev.hitY, hitHeight);
           if (ev.shooter === localSlot) this.effects.screenShake(1.4, 60);
         }
         if (ev.hitX !== undefined && ev.hitY !== undefined) {
           const sawImpact = sawShooter || hasLineOfSight(localPlayer.x, localPlayer.y, ev.hitX, ev.hitY, this.segments);
           if (sawImpact) {
             if (ev.hit) this.effects.hitFlash(this.remoteMesh);
-            else this.effects.impact(ev.hitX, ev.hitY);
+            else this.effects.impact(ev.hitX, ev.hitY, hitHeight);
           }
         }
         if (ev.hit && otherSlot(ev.shooter) === localSlot) {
@@ -351,7 +359,7 @@ export class Scene3D {
         break;
       }
       case "thrown": {
-        this.effects.tracer(localPlayer.x, localPlayer.y, ev.x, ev.y);
+        this.effects.tracer(localPlayer.x, localPlayer.y, EYE_HEIGHT + localPlayer.jumpZ, ev.x, ev.y, EYE_HEIGHT);
         if (ev.kind === "flash") audio.playFlashBang(ev.x, ev.y, localPlayer.x, localPlayer.y, localPlayer.angle, false);
         else if (ev.kind === "frag") audio.playExplosion(ev.x, ev.y, localPlayer.x, localPlayer.y, localPlayer.angle, false);
         break;

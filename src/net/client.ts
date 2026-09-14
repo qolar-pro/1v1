@@ -81,6 +81,7 @@ function mergeAuthoritative(local: PlayerState, decoded: DecodedPlayerWire): Pla
     kills: decoded.kills,
     deaths: decoded.deaths,
     connected: decoded.connected,
+    jumpZ: decoded.jumpZ,
   };
 }
 

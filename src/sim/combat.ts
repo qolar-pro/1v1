@@ -2,12 +2,17 @@ import {
   ARMOR_ABSORB,
   ARMOR_DEGRADE_PER_HIT,
   CHEST_MULT,
+  EYE_HEIGHT,
   HEADSHOT_MULT,
+  HITBOX_MAX_Y,
+  HITBOX_MIN_Y,
   LEG_MULT,
   MAX_HEALTH,
   PLAYER_RADIUS,
   RECOIL_RECOVER_S,
   RUN_SPEED,
+  VERTICAL_HEAD_FRAC,
+  VERTICAL_LEG_FRAC,
 } from "../config";
 import { getWeapon, type WeaponDef } from "../data/weapons";
 import type { WallRect } from "../data/maps/types";
@@ -137,6 +142,18 @@ export function zoneMultiplier(zone: HitZoneName): number {
   return CHEST_MULT;
 }
 
+/**
+ * Aiming into the top or bottom sliver of a target's hitbox forces a
+ * head/leg zone outright, regardless of the horizontal facing-relative
+ * angle — this is what makes vertical aim (pitch) actually matter for
+ * damage, not just "did the shot land at all".
+ */
+export function classifyVerticalZone(heightFrac: number): HitZoneName | null {
+  if (heightFrac >= VERTICAL_HEAD_FRAC) return "head";
+  if (heightFrac <= VERTICAL_LEG_FRAC) return "leg";
+  return null;
+}
+
 export interface DamageResult {
   target: PlayerState;
   damageDealt: number;
@@ -150,9 +167,10 @@ export function applyHitscanDamage(
   hitX: number,
   hitY: number,
   nowMs: number,
+  zoneOverride?: HitZoneName | null,
 ): DamageResult {
   void nowMs;
-  const zone = classifyHitZone(hitX, hitY, target);
+  const zone = zoneOverride ?? classifyHitZone(hitX, hitY, target);
   const rawDamage = weapon.damage * zoneMultiplier(zone);
 
   let remaining = rawDamage;
@@ -219,6 +237,35 @@ export function circleHitTest(
 }
 
 export const HITBOX_RADIUS = PLAYER_RADIUS;
+
+export interface VerticalHitResult {
+  hit: boolean;
+  /** 0 (feet) .. 1 (top of head), clamped — used for the head/leg zone override. */
+  heightFrac: number;
+}
+
+/**
+ * Given the horizontal (XZ) distance to a target's closest approach along a
+ * pitched ray, works out the actual world height the shot passes through at
+ * that point and whether it falls inside the target's hitbox. This is what
+ * makes "aim up/down" actually change what a shot hits instead of every
+ * hitscan being a flat ray at eye height regardless of where you're looking.
+ */
+/** World height a pitched ray reaches after travelling `horizontalDist` (XZ distance) from a point at `originHeight`. */
+export function pitchedHeightAt(originHeight: number, pitch: number, horizontalDist: number): number {
+  const cosPitch = Math.cos(pitch);
+  const safeCos = Math.abs(cosPitch) < 0.05 ? Math.sign(cosPitch || 1) * 0.05 : cosPitch;
+  const dist3d = horizontalDist / safeCos;
+  return originHeight + dist3d * Math.sin(pitch);
+}
+
+export function computeVerticalHit(horizontalDist: number, pitch: number, shooterJumpZ: number, targetJumpZ: number): VerticalHitResult {
+  const heightAtPoint = pitchedHeightAt(EYE_HEIGHT + shooterJumpZ, pitch, horizontalDist);
+  const relHeight = heightAtPoint - targetJumpZ;
+  const hit = relHeight >= HITBOX_MIN_Y && relHeight <= HITBOX_MAX_Y;
+  const heightFrac = Math.min(1, Math.max(0, (relHeight - HITBOX_MIN_Y) / (HITBOX_MAX_Y - HITBOX_MIN_Y)));
+  return { hit, heightFrac };
+}
 
 export interface StepResult {
   player: PlayerState;

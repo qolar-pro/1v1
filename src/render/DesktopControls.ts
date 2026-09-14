@@ -1,4 +1,4 @@
-import { BUTTON_FIRE, BUTTON_RELOAD, BUTTON_USE, BUTTON_WALK, MAX_PITCH, MOUSE_SENSITIVITY } from "../config";
+import { BUTTON_FIRE, BUTTON_JUMP, BUTTON_RELOAD, BUTTON_USE, BUTTON_WALK, MAX_PITCH, MOUSE_SENSITIVITY } from "../config";
 import type { RawInput, WeaponSlot } from "../sim/types";
 import type { Controls } from "./controls";
 
@@ -23,6 +23,7 @@ export class DesktopControls implements Controls {
     this.down.add(e.code);
     if (e.code === "KeyB") this.buyToggleQueued = true;
     if (e.code === "KeyG") this.throwQueued = true;
+    if (e.code === "Space" || e.code === "Tab") e.preventDefault();
   };
   private readonly onKeyUp = (e: KeyboardEvent) => this.down.delete(e.code);
   private readonly onMouseDown = (e: MouseEvent) => {
@@ -74,6 +75,7 @@ export class DesktopControls implements Controls {
     if (this.firing) buttons |= BUTTON_FIRE;
     if (this.down.has("KeyR")) buttons |= BUTTON_RELOAD;
     if (this.down.has("KeyE")) buttons |= BUTTON_USE;
+    if (this.down.has("Space")) buttons |= BUTTON_JUMP;
 
     let wantSlot: WeaponSlot | null = null;
     if (this.down.has("Digit1")) wantSlot = "primary";
@@ -83,7 +85,7 @@ export class DesktopControls implements Controls {
     const throwGrenade = this.throwQueued;
     this.throwQueued = false;
 
-    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade };
+    return { moveX, moveY, aimAngle: this.yaw, buttons, wantSlot, throwGrenade, pitch: this.pitch };
   }
 
   getPitch(): number {

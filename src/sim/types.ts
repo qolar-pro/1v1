@@ -24,6 +24,13 @@ export interface RawInput {
   wantSlot: WeaponSlot | null;
   /** Edge-triggered grenade-throw request (client sends it once, on keydown). */
   throwGrenade: boolean;
+  /**
+   * Camera pitch (radians, up positive) at the moment this input was
+   * sampled. Not persisted on PlayerState or broadcast in snapshots — it's
+   * only read by the host, at the instant a shot fires, to resolve real
+   * vertical aim (see combat.ts/host.ts resolveShot).
+   */
+  pitch: number;
 }
 
 export interface InputSample extends RawInput {
@@ -81,6 +88,10 @@ export interface PlayerState {
   deaths: number;
 
   respawnPending: boolean;
+
+  /** Height above the floor (world Y / Three.js up axis) and vertical velocity, for jumping. */
+  jumpZ: number;
+  jumpVel: number;
 }
 
 export interface WorldState {
@@ -134,6 +145,9 @@ export function createPlayerState(x: number, y: number, role: Role): PlayerState
     kills: 0,
     deaths: 0,
     respawnPending: false,
+
+    jumpZ: 0,
+    jumpVel: 0,
   };
 }
 

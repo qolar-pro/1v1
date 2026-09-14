@@ -30,18 +30,18 @@ export class Effects {
     this.impactMaterial = new THREE.SpriteMaterial({ map: tex, depthWrite: false });
   }
 
-  muzzleFlash(x: number, y: number, angle: number): void {
+  muzzleFlash(x: number, y: number, height: number, angle: number): void {
     const fx = x + Math.cos(angle) * 20;
     const fz = y + Math.sin(angle) * 20;
     const light = new THREE.PointLight(0xfff2c4, 6, 140, 2);
-    light.position.set(fx, EYE_HEIGHT, fz);
+    light.position.set(fx, height, fz);
     this.scene.add(light);
     window.setTimeout(() => this.scene.remove(light), FLASH_MS);
   }
 
-  tracer(x1: number, y1: number, x2: number, y2: number): void {
-    const from = new THREE.Vector3(x1, EYE_HEIGHT, y1);
-    const to = new THREE.Vector3(x2, EYE_HEIGHT, y2);
+  tracer(x1: number, y1: number, h1: number, x2: number, y2: number, h2: number): void {
+    const from = new THREE.Vector3(x1, h1, y1);
+    const to = new THREE.Vector3(x2, h2, y2);
     const geom = new THREE.BufferGeometry().setFromPoints([from, to]);
     const mat = new THREE.LineBasicMaterial({ color: 0xfff6d8, transparent: true, opacity: 0.9 });
     const line = new THREE.Line(geom, mat);
@@ -61,9 +61,9 @@ export class Effects {
     requestAnimationFrame(tick);
   }
 
-  impact(x: number, y: number): void {
+  impact(x: number, y: number, height: number = EYE_HEIGHT): void {
     const sprite = new THREE.Sprite(this.impactMaterial);
-    sprite.position.set(x, EYE_HEIGHT + (Math.random() - 0.5) * 20, y);
+    sprite.position.set(x, height + (Math.random() - 0.5) * 8, y);
     sprite.scale.set(4, 4, 1);
     this.scene.add(sprite);
     this.impacts.push(sprite);

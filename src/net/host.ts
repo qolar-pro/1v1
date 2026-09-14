@@ -9,7 +9,7 @@ import {
   type Slot,
   type WorldState,
 } from "../sim/types";
-import { applyInputToPlayer, applyHitscanDamage, applyMeleeDamage, circleHitTest, HITBOX_RADIUS } from "../sim/combat";
+import { applyInputToPlayer, applyHitscanDamage, applyMeleeDamage, circleHitTest, classifyVerticalZone, computeVerticalHit, HITBOX_RADIUS } from "../sim/combat";
 import { createWorld } from "../sim/world";
 import { pushSample, sampleAt, type TimedSample } from "../sim/interpolate";
 import { raycast, wallsToSegments, shortestAngleDiff, type Segment } from "../sim/raycast";
@@ -221,7 +221,7 @@ export class HostSession implements NetSession {
     }
 
     if (result.fired) {
-      this.resolveShot(slot, result.shotAngle, result.weapon, nowMs);
+      this.resolveShot(slot, result.shotAngle, input.pitch, result.weapon, nowMs);
     }
 
     if (gameIsLive) {
@@ -304,7 +304,7 @@ export class HostSession implements NetSession {
     }
   }
 
-  private resolveShot(shooterSlot: Slot, shotAngle: number, weapon: WeaponDef, nowMs: number): void {
+  private resolveShot(shooterSlot: Slot, shotAngle: number, pitch: number, weapon: WeaponDef, nowMs: number): void {
     const shooter = this.world.players[shooterSlot];
     if (weapon.class === "melee") {
       this.resolveMelee(shooterSlot, nowMs);
@@ -327,11 +327,13 @@ export class HostSession implements NetSession {
         angle: targetCurrent.angle,
       };
       const t = circleHitTest(shooter.x, shooter.y, dirX, dirY, rewound.x, rewound.y, HITBOX_RADIUS);
-      if (t !== null && t < wallHit.dist) {
+      const vertical = t !== null ? computeVerticalHit(t, pitch, shooter.jumpZ, targetCurrent.jumpZ) : null;
+      if (t !== null && t < wallHit.dist && vertical?.hit) {
         const hitX = shooter.x + dirX * t;
         const hitY = shooter.y + dirY * t;
         const targetForZone: PlayerState = { ...targetCurrent, x: rewound.x, y: rewound.y, angle: rewound.angle };
-        const result = applyHitscanDamage(targetForZone, weapon, hitX, hitY, nowMs);
+        const zoneOverride = classifyVerticalZone(vertical.heightFrac);
+        const result = applyHitscanDamage(targetForZone, weapon, hitX, hitY, nowMs, zoneOverride);
         this.world.players[targetSlot] = {
           ...targetCurrent,
           hp: result.target.hp,
@@ -351,6 +353,7 @@ export class HostSession implements NetSession {
           x: shooter.x,
           y: shooter.y,
           angle: shotAngle,
+          pitch,
           weaponId: weapon.id,
           hit: true,
           hitX,
@@ -368,6 +371,7 @@ export class HostSession implements NetSession {
       x: shooter.x,
       y: shooter.y,
       angle: shotAngle,
+      pitch,
       weaponId: weapon.id,
       hit: false,
       hitX: wallHit.x,

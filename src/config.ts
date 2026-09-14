@@ -40,6 +40,7 @@ export const BUTTON_FIRE = 1 << 1;
 export const BUTTON_RELOAD = 1 << 2;
 export const BUTTON_USE = 1 << 3;
 export const BUTTON_SCOPE = 1 << 4;
+export const BUTTON_JUMP = 1 << 5;
 export const DEFUSE_RADIUS = 100;
 export const MELEE_RANGE = PLAYER_RADIUS * 2.4;
 export const MELEE_ARC_RAD = Math.PI / 3;
@@ -47,9 +48,9 @@ export const MAX_HITSCAN_RANGE = 2400;
 
 // --- First-person 3D rendering ---
 // The simulation stays a flat 2D plane (sim.x, sim.y) — mapped to Three.js
-// (x, z) with a fixed height axis. Pitch (looking up/down) is purely a
-// client-side visual — hitscan stays a horizontal ray at EYE_HEIGHT, same as
-// the original top-down design, so none of sim/combat.ts needed to change.
+// (x, z) with a fixed height axis (Three's y). Pitch (looking up/down) is
+// sent per-input (not persisted on PlayerState) purely so the host can
+// resolve hitscan with real vertical aim — see HITBOX_MIN_Y/MAX_Y below.
 export const EYE_HEIGHT = 60;
 export const WALL_HEIGHT = 240;
 export const PROP_HEIGHT = 110;
@@ -57,6 +58,17 @@ export const FPS_FOV_DEG = 90;
 export const MOUSE_SENSITIVITY = 0.0022; // radians per pixel of mouse movement
 export const TOUCH_LOOK_SENSITIVITY = 0.006; // radians per pixel of touch drag
 export const MAX_PITCH = Math.PI / 2 - 0.05;
+
+/** Vertical extent of a player's hitbox (world Y, relative to their jumpZ), feet to just-above-head. */
+export const HITBOX_MIN_Y = 0;
+export const HITBOX_MAX_Y = EYE_HEIGHT + 15;
+/** Aiming in the top/bottom slivers of the hitbox forces a head/leg zone regardless of horizontal angle. */
+export const VERTICAL_HEAD_FRAC = 0.78;
+export const VERTICAL_LEG_FRAC = 0.22;
+
+// --- Jumping ---
+export const JUMP_VELOCITY = 260; // px/s upward impulse
+export const GRAVITY = 620; // px/s^2
 
 // --- Vision ---
 export const VISION_FOV_DEG = 100;

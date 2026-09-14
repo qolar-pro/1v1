@@ -20,6 +20,7 @@ export type InputWire = [
   dt: number,
   wantSlot: WeaponSlot | 0,
   throwGrenade: 0 | 1,
+  pitch: number,
 ];
 
 function round(v: number, places = 3): number {
@@ -36,6 +37,7 @@ export function encodeInput(input: {
   dt: number;
   wantSlot: WeaponSlot | null;
   throwGrenade: boolean;
+  pitch: number;
 }): InputWire {
   return [
     input.seq,
@@ -46,6 +48,7 @@ export function encodeInput(input: {
     round(input.dt, 4),
     input.wantSlot ?? 0,
     input.throwGrenade ? 1 : 0,
+    round(input.pitch, 4),
   ];
 }
 
@@ -58,9 +61,20 @@ export function decodeInput(wire: InputWire): {
   dt: number;
   wantSlot: WeaponSlot | null;
   throwGrenade: boolean;
+  pitch: number;
 } {
-  const [seq, moveX, moveY, aimAngle, buttons, dt, wantSlot, throwGrenade] = wire;
-  return { seq, moveX, moveY, aimAngle, buttons, dt, wantSlot: wantSlot === 0 ? null : wantSlot, throwGrenade: throwGrenade === 1 };
+  const [seq, moveX, moveY, aimAngle, buttons, dt, wantSlot, throwGrenade, pitch] = wire;
+  return {
+    seq,
+    moveX,
+    moveY,
+    aimAngle,
+    buttons,
+    dt,
+    wantSlot: wantSlot === 0 ? null : wantSlot,
+    throwGrenade: throwGrenade === 1,
+    pitch,
+  };
 }
 
 export interface PlayerWire {
@@ -93,6 +107,7 @@ export interface PlayerWire {
   ap: number; // action progress 0..1
   k: number; // kills
   d: number; // deaths
+  jz: number; // jumpZ (height above floor)
 }
 
 export function encodePlayer(p: PlayerState, nowMs: number): PlayerWire {
@@ -127,6 +142,7 @@ export function encodePlayer(p: PlayerState, nowMs: number): PlayerWire {
     ap: round(p.actionProgress, 3),
     k: p.kills,
     d: p.deaths,
+    jz: round(p.jumpZ, 1),
   };
 }
 
@@ -165,6 +181,7 @@ export interface DecodedPlayerWire {
   actionProgress: number;
   kills: number;
   deaths: number;
+  jumpZ: number;
 }
 
 export function decodePlayer(w: PlayerWire): DecodedPlayerWire {
@@ -196,6 +213,7 @@ export function decodePlayer(w: PlayerWire): DecodedPlayerWire {
     actionProgress: w.ap,
     kills: w.k,
     deaths: w.d,
+    jumpZ: w.jz,
   };
 }
 

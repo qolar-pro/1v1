@@ -7,7 +7,10 @@ import {
   WORLD_MARGIN,
   WORLD_WIDTH,
   BUTTON_WALK,
+  BUTTON_JUMP,
   PLAYER_RADIUS,
+  JUMP_VELOCITY,
+  GRAVITY,
 } from "../config";
 import type { WallRect } from "../data/maps/types";
 import { resolveWallCollisions } from "./collision";
@@ -74,6 +77,20 @@ export function stepPlayer(
     y = resolved.y;
   }
 
+  const grounded = player.jumpZ <= 0;
+  let jumpVel = player.jumpVel;
+  let jumpZ = player.jumpZ;
+  if (grounded && (input.buttons & BUTTON_JUMP) !== 0) {
+    jumpVel = JUMP_VELOCITY;
+    jumpZ = 0.01; // nudge airborne immediately so a held key doesn't re-trigger every frame
+  }
+  jumpVel -= GRAVITY * dt;
+  jumpZ += jumpVel * dt;
+  if (jumpZ <= 0) {
+    jumpZ = 0;
+    jumpVel = 0;
+  }
+
   return {
     ...player,
     x,
@@ -82,5 +99,7 @@ export function stepPlayer(
     vy,
     angle: input.aimAngle,
     lastProcessedSeq: input.seq,
+    jumpZ,
+    jumpVel,
   };
 }

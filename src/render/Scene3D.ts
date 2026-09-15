@@ -20,6 +20,19 @@ import { updateDebugHud } from "../ui/DebugHud";
 import { hideConnectionStatus, showPeerGone, showReconnecting } from "../ui/ConnectionStatus";
 import { updateHud } from "./Hud";
 import * as audio from "../audio/engine";
+import { assetUrl } from "../data/assets.manifest";
+
+const TEXTURE_LOADER = new THREE.TextureLoader();
+const WORLD_UNITS_PER_TILE = 140;
+
+function loadTiledTexture(url: string, repeatX: number, repeatY: number): THREE.Texture {
+  const tex = TEXTURE_LOADER.load(url);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(Math.max(1, repeatX), Math.max(1, repeatY));
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
 
 const HOST_COLOR = 0x2dd4bf;
 const JOINER_COLOR = 0xf59e0b;
@@ -137,20 +150,19 @@ export class Scene3D {
 
   private buildLevel(): void {
     const floorGeo = new THREE.PlaneGeometry(this.map.width, this.map.height);
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x1c1e22, roughness: 0.95 });
+    const floorTex = loadTiledTexture(assetUrl("floor.concrete"), this.map.width / WORLD_UNITS_PER_TILE, this.map.height / WORLD_UNITS_PER_TILE);
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(this.map.width / 2, 0, this.map.height / 2);
     this.scene.add(floor);
 
-    const grid = new THREE.GridHelper(Math.max(this.map.width, this.map.height), 22, 0x24262b, 0x24262b);
-    grid.position.set(this.map.width / 2, 0.5, this.map.height / 2);
-    this.scene.add(grid);
-
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x35383f, roughness: 0.85 });
+    const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
     for (const wall of this.map.walls) {
       const geo = new THREE.BoxGeometry(wall.w, WALL_HEIGHT, wall.h);
-      const mesh = new THREE.Mesh(geo, wallMat);
+      const mat = wallMat.clone();
+      mat.map = loadTiledTexture(assetUrl("wall.metal"), Math.max(wall.w, wall.h) / WORLD_UNITS_PER_TILE, WALL_HEIGHT / WORLD_UNITS_PER_TILE);
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(wall.x + wall.w / 2, WALL_HEIGHT / 2, wall.y + wall.h / 2);
       this.scene.add(mesh);
     }

@@ -389,7 +389,8 @@ button.primary:hover,
 
 .buy-item {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
   width: 100%;
   background: #0e0f11;
   border: 1px solid var(--border);
@@ -399,6 +400,19 @@ button.primary:hover,
   margin-bottom: 0.4rem;
   cursor: pointer;
   font-size: 0.85rem;
+}
+
+.buy-item-icon {
+  width: 32px;
+  height: 16px;
+  object-fit: contain;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+}
+
+.buy-item-name {
+  flex: 1;
+  text-align: left;
 }
 
 .buy-item:hover:not(:disabled) {

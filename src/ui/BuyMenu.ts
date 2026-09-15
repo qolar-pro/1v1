@@ -1,4 +1,5 @@
 import { BUYABLE_WEAPONS, GRENADE_MAX, UTILITY, WEAPONS, getWeapon } from "../data/weapons";
+import { assetUrl, type AssetKey } from "../data/assets.manifest";
 import type { PlayerState, Role } from "../sim/types";
 
 export type BuyHandler = (kind: "weapon" | "utility", id: string) => void;
@@ -28,8 +29,10 @@ function weaponRow(id: string, player: PlayerState): string {
   const w = getWeapon(id);
   const affordable = player.money >= w.price;
   const equipped = player.loadout.primary === id || player.loadout.secondary === id;
+  const iconKey = `icon.${id}` as AssetKey;
   return `
     <button class="buy-item ${equipped ? "equipped" : ""}" data-kind="weapon" data-id="${id}" ${affordable ? "" : "disabled"}>
+      <img class="buy-item-icon" src="${assetUrl(iconKey)}" alt="" />
       <span class="buy-item-name">${w.name}</span>
       <span class="buy-item-price">$${w.price}</span>
     </button>

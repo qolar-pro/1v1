@@ -165,7 +165,7 @@ export class Scene3D {
   private installLookPrompt(): void {
     this.lookPromptEl = document.createElement("div");
     this.lookPromptEl.id = "look-prompt";
-    this.lookPromptEl.textContent = "Click to look around";
+    this.lookPromptEl.textContent = "Click to lock mouse & look around (Esc to release)";
     document.body.appendChild(this.lookPromptEl);
   }
 

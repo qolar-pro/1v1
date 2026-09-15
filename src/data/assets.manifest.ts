@@ -7,6 +7,9 @@
 export const ASSET_MANIFEST = {
   "floor.concrete": "/assets/floor_concrete.png",
   "wall.metal": "/assets/wall_metal.png",
+  "material.gunmetal": "/assets/gunmetal.png",
+  "material.crate": "/assets/crate_wood.png",
+  "material.fabric": "/assets/fabric_tactical.png",
   "icon.shard": "/assets/icons/shard.png",
   "icon.tacker": "/assets/icons/tacker.png",
   "icon.mule": "/assets/icons/mule.png",

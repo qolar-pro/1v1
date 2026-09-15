@@ -2,7 +2,7 @@ import * as THREE from "three";
 import type { NetSession } from "../net/session";
 import { HOST_SLOT, otherSlot, type PlayerState, type Slot } from "../sim/types";
 import { hasLineOfSight, wallsToSegments, type Segment } from "../sim/raycast";
-import { pitchedHeightAt } from "../sim/combat";
+import { activeWeaponId, pitchedHeightAt } from "../sim/combat";
 import { DISCONNECT_GRACE_MS, EYE_HEIGHT, FPS_FOV_DEG, PLAYER_RADIUS, PROP_HEIGHT, WALL_HEIGHT } from "../config";
 import type { GameEvent } from "../sim/events";
 import { getWeapon } from "../data/weapons";
@@ -49,6 +49,8 @@ export class Scene3D {
   private readonly remoteMesh: THREE.Group;
   private readonly effects: Effects;
   private readonly smokeMeshes = new Map<string, THREE.Mesh>();
+  private viewmodelGroup: THREE.Group | null = null;
+  private currentViewmodelWeaponId: string | null = null;
 
   private lookPromptEl: HTMLDivElement | null = null;
   private crosshairEl: HTMLDivElement | null = null;
@@ -75,14 +77,18 @@ export class Scene3D {
     this.scene.add(this.camera);
 
     this.scene.background = new THREE.Color(0x05060a);
-    this.scene.fog = new THREE.Fog(0x05060a, 260, 1150);
+    // Far distance must clear the longest sightline on any map (raider<->warden
+    // spawns are ~1760u apart on straight corridors) or opponents fog out to
+    // pure black before they're ever visible — this was making the far spawn
+    // completely invisible from the near spawn even with everything in sync.
+    this.scene.fog = new THREE.Fog(0x05060a, 300, 2500);
 
     this.buildLighting();
     this.buildLevel();
 
     this.remoteMesh = this.buildPlayerMesh(otherSlot(session.localSlot));
     this.scene.add(this.remoteMesh);
-    this.camera.add(this.buildViewmodel());
+    this.rebuildViewmodel("pistol");
     const headlamp = new THREE.PointLight(0xcfd8ff, 1.2, 420, 1.6);
     this.camera.add(headlamp);
 
@@ -167,10 +173,12 @@ export class Scene3D {
       this.scene.add(mesh);
     }
 
-    const propMat = new THREE.MeshStandardMaterial({ color: 0x4a4030, roughness: 0.9 });
+    const crateMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
     for (const prop of this.map.props) {
       const geo = new THREE.BoxGeometry(prop.w, PROP_HEIGHT, prop.h);
-      const mesh = new THREE.Mesh(geo, propMat);
+      const mat = crateMat.clone();
+      mat.map = loadTiledTexture(assetUrl("material.crate"), Math.max(1, prop.w / WORLD_UNITS_PER_TILE), Math.max(1, PROP_HEIGHT / WORLD_UNITS_PER_TILE));
+      const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(prop.x + prop.w / 2, PROP_HEIGHT / 2, prop.y + prop.h / 2);
       this.scene.add(mesh);
     }
@@ -186,7 +194,11 @@ export class Scene3D {
   private buildPlayerMesh(slot: Slot): THREE.Group {
     const color = slot === HOST_SLOT ? HOST_COLOR : JOINER_COLOR;
     const group = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ color, roughness: 0.6 });
+    // Fabric goes on as a bump map only, not a color map — team color has to
+    // stay flat and saturated for instant at-a-glance recognition (a fully
+    // textured capsule muddied the amber/teal identity badly on a first try).
+    const fabricTex = loadTiledTexture(assetUrl("material.fabric"), 2, 3);
+    const bodyMat = new THREE.MeshStandardMaterial({ bumpMap: fabricTex, bumpScale: 0.6, color, roughness: 0.75 });
     const body = new THREE.Mesh(new THREE.CapsuleGeometry(PLAYER_RADIUS, Math.max(1, EYE_HEIGHT - PLAYER_RADIUS * 2), 4, 8), bodyMat);
     body.position.y = EYE_HEIGHT * 0.5;
     group.add(body);
@@ -197,12 +209,73 @@ export class Scene3D {
     return group;
   }
 
-  private buildViewmodel(): THREE.Object3D {
+  /** Rebuilds the first-person weapon model to match the currently equipped weapon's class. */
+  private rebuildViewmodel(weaponClass: string): void {
+    if (this.viewmodelGroup) {
+      this.camera.remove(this.viewmodelGroup);
+      this.viewmodelGroup.traverse((child) => {
+        if (child instanceof THREE.Mesh) {
+          child.geometry.dispose();
+          const mats = Array.isArray(child.material) ? child.material : [child.material];
+          for (const m of mats) {
+            if (m instanceof THREE.MeshStandardMaterial) m.map?.dispose();
+            m.dispose();
+          }
+        }
+      });
+    }
+    this.viewmodelGroup = this.buildGunModel(weaponClass);
+    this.camera.add(this.viewmodelGroup);
+  }
+
+  private buildGunModel(weaponClass: string): THREE.Group {
     const group = new THREE.Group();
-    const mat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.5 });
-    const gun = new THREE.Mesh(new THREE.BoxGeometry(6, 6, 34), mat);
-    gun.position.set(9, -9, -24);
-    group.add(gun);
+    group.position.set(9, -9, -24);
+
+    const metalTex = loadTiledTexture(assetUrl("material.gunmetal"), 1, 1);
+    const metal = new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.45, metalness: 0.5 });
+    const grip = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.8 });
+
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): void => {
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(x, y, z);
+      mesh.rotation.set(rx, ry, rz);
+      group.add(mesh);
+    };
+
+    switch (weaponClass) {
+      case "pistol":
+        add(new THREE.BoxGeometry(5, 5, 14), metal, 0, 2, 0);
+        add(new THREE.BoxGeometry(2.5, 2.5, 8), metal, 0, 3, -10);
+        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 4);
+        break;
+      case "smg":
+        add(new THREE.BoxGeometry(6, 6, 20), metal, 0, 2, -2);
+        add(new THREE.BoxGeometry(2.5, 2.5, 8), metal, 0, 3, -14);
+        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 2);
+        add(new THREE.BoxGeometry(3, 3, 10), grip, 0, -8, 4);
+        add(new THREE.BoxGeometry(2, 2, 12), metal, 0, 1, 12, 0.35, 0, 0);
+        break;
+      case "rifle":
+        add(new THREE.BoxGeometry(6, 6, 30), metal, 0, 2, -4);
+        add(new THREE.BoxGeometry(2.5, 2.5, 12), metal, 0, 3, -22);
+        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 0);
+        add(new THREE.BoxGeometry(3, 3, 12), grip, 0, -8, -2);
+        add(new THREE.BoxGeometry(4, 4, 10), metal, 0, 2, 14);
+        break;
+      case "sniper":
+        add(new THREE.BoxGeometry(5, 5, 36), metal, 0, 2, -6);
+        add(new THREE.CylinderGeometry(1.3, 1.3, 16, 8), metal, 0, 3, -28, Math.PI / 2, 0, 0);
+        add(new THREE.CylinderGeometry(1.8, 1.8, 12, 8), grip, 0, 7, -8, Math.PI / 2, 0, 0);
+        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 4);
+        add(new THREE.BoxGeometry(4, 4, 10), metal, 0, 2, 18);
+        break;
+      default: // melee
+        add(new THREE.BoxGeometry(2, 1, 16), metal, 0, 2, -10);
+        add(new THREE.CylinderGeometry(1.5, 1.5, 8, 8), grip, 0, 0, 2, Math.PI / 2, 0, 0);
+        break;
+    }
+
     return group;
   }
 
@@ -241,6 +314,12 @@ export class Scene3D {
     const remoteSlot = otherSlot(localSlot);
     const localPlayer = world.players[localSlot];
     const remotePlayer = world.players[remoteSlot];
+
+    const equippedId = activeWeaponId(localPlayer);
+    if (equippedId !== this.currentViewmodelWeaponId) {
+      this.currentViewmodelWeaponId = equippedId;
+      this.rebuildViewmodel(getWeapon(equippedId).class);
+    }
 
     const pitch = this.controls.getPitch();
     const yaw = localPlayer.angle;

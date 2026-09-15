@@ -1,4 +1,10 @@
 import * as THREE from "three";
+import { RoundedBoxGeometry } from "three/examples/jsm/geometries/RoundedBoxGeometry.js";
+import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
+import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
+import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import type { NetSession } from "../net/session";
 import { HOST_SLOT, otherSlot, type PlayerState, type Slot } from "../sim/types";
 import { hasLineOfSight, wallsToSegments, type Segment } from "../sim/raycast";
@@ -24,6 +30,9 @@ import { assetUrl } from "../data/assets.manifest";
 
 const TEXTURE_LOADER = new THREE.TextureLoader();
 const WORLD_UNITS_PER_TILE = 140;
+// Set once a renderer exists (see Scene3D constructor) so every tiled texture
+// gets sharp detail at grazing angles instead of the default blurry mip.
+let MAX_ANISOTROPY = 1;
 
 function loadTiledTexture(url: string, repeatX: number, repeatY: number): THREE.Texture {
   const tex = TEXTURE_LOADER.load(url);
@@ -31,6 +40,7 @@ function loadTiledTexture(url: string, repeatX: number, repeatY: number): THREE.
   tex.wrapT = THREE.RepeatWrapping;
   tex.repeat.set(Math.max(1, repeatX), Math.max(1, repeatY));
   tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = MAX_ANISOTROPY;
   return tex;
 }
 
@@ -46,6 +56,8 @@ export class Scene3D {
   private readonly map: MapDef;
   private readonly segments: Segment[];
 
+  private readonly composer: EffectComposer;
+  private readonly bloomPass: UnrealBloomPass;
   private readonly remoteMesh: THREE.Group;
   private readonly effects: Effects;
   private readonly smokeMeshes = new Map<string, THREE.Mesh>();
@@ -71,7 +83,16 @@ export class Scene3D {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // ACES filmic tone mapping is what gives modern realtime-3D games their
+    // "cinematic" rolled-off highlights instead of the flat/blown-out look of
+    // the default linear mapping — the single biggest lever for a more
+    // realistic feel that doesn't require new geometry or textures.
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     container.appendChild(this.renderer.domElement);
+    MAX_ANISOTROPY = this.renderer.capabilities.getMaxAnisotropy();
 
     this.camera = new THREE.PerspectiveCamera(FPS_FOV_DEG, window.innerWidth / window.innerHeight, 1, 3000);
     this.scene.add(this.camera);
@@ -83,6 +104,14 @@ export class Scene3D {
     // completely invisible from the near spawn even with everything in sync.
     this.scene.fog = new THREE.Fog(0x05060a, 300, 2500);
 
+    // A generic neutral "room" environment (procedural, no art asset needed)
+    // gives every metal/PBR material real specular reflections instead of
+    // looking flat-lit — this is most of what separates "textured boxes" from
+    // something that reads as an actual physical material.
+    const pmrem = new THREE.PMREMGenerator(this.renderer);
+    this.scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    pmrem.dispose();
+
     this.buildLighting();
     this.buildLevel();
 
@@ -93,6 +122,12 @@ export class Scene3D {
     this.camera.add(headlamp);
 
     this.effects = new Effects(this.scene, this.camera);
+
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.55, 0.4, 0.85);
+    this.composer.addPass(this.bloomPass);
+    this.composer.addPass(new OutputPass());
 
     const touch = isTouchDevice();
     this.controls = touch ? new TouchControls() : new DesktopControls(this.renderer.domElement);
@@ -117,6 +152,8 @@ export class Scene3D {
     this.camera.aspect = window.innerWidth / window.innerHeight;
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(window.innerWidth, window.innerHeight);
+    this.composer.setSize(window.innerWidth, window.innerHeight);
+    this.bloomPass.setSize(window.innerWidth, window.innerHeight);
   };
 
   private readonly unlockAudioOnce = (): void => {
@@ -145,11 +182,28 @@ export class Scene3D {
   private buildLighting(): void {
     const hemi = new THREE.HemisphereLight(0xaeb8c8, 0x15161a, 1.6);
     this.scene.add(hemi);
+
+    const centerX = this.map.width / 2;
+    const centerZ = this.map.height / 2;
     const dir = new THREE.DirectionalLight(0xffffff, 1.1);
-    dir.position.set(400, 600, 200);
+    dir.position.set(centerX + 400, 600, centerZ + 200);
+    dir.target.position.set(centerX, 0, centerZ);
+    dir.castShadow = true;
+    dir.shadow.mapSize.set(2048, 2048);
+    const halfExtent = Math.max(this.map.width, this.map.height) / 2 + 100;
+    dir.shadow.camera.left = -halfExtent;
+    dir.shadow.camera.right = halfExtent;
+    dir.shadow.camera.top = halfExtent;
+    dir.shadow.camera.bottom = -halfExtent;
+    dir.shadow.camera.near = 10;
+    dir.shadow.camera.far = 2200;
+    dir.shadow.bias = -0.0015;
+    dir.shadow.normalBias = 0.6;
     this.scene.add(dir);
+    this.scene.add(dir.target);
+
     const fill = new THREE.DirectionalLight(0x6f7aa8, 0.4);
-    fill.position.set(-300, 400, -400);
+    fill.position.set(centerX - 300, 400, centerZ - 400);
     this.scene.add(fill);
     this.scene.add(new THREE.AmbientLight(0x404550, 0.6));
   }
@@ -157,29 +211,34 @@ export class Scene3D {
   private buildLevel(): void {
     const floorGeo = new THREE.PlaneGeometry(this.map.width, this.map.height);
     const floorTex = loadTiledTexture(assetUrl("floor.concrete"), this.map.width / WORLD_UNITS_PER_TILE, this.map.height / WORLD_UNITS_PER_TILE);
-    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.95 });
+    const floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.92, metalness: 0.1 });
     const floor = new THREE.Mesh(floorGeo, floorMat);
     floor.rotation.x = -Math.PI / 2;
     floor.position.set(this.map.width / 2, 0, this.map.height / 2);
+    floor.receiveShadow = true;
     this.scene.add(floor);
 
-    const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.85 });
+    const wallMat = new THREE.MeshStandardMaterial({ roughness: 0.7, metalness: 0.35 });
     for (const wall of this.map.walls) {
       const geo = new THREE.BoxGeometry(wall.w, WALL_HEIGHT, wall.h);
       const mat = wallMat.clone();
       mat.map = loadTiledTexture(assetUrl("wall.metal"), Math.max(wall.w, wall.h) / WORLD_UNITS_PER_TILE, WALL_HEIGHT / WORLD_UNITS_PER_TILE);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(wall.x + wall.w / 2, WALL_HEIGHT / 2, wall.y + wall.h / 2);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       this.scene.add(mesh);
     }
 
-    const crateMat = new THREE.MeshStandardMaterial({ roughness: 0.9 });
+    const crateMat = new THREE.MeshStandardMaterial({ roughness: 0.75, metalness: 0.25 });
     for (const prop of this.map.props) {
       const geo = new THREE.BoxGeometry(prop.w, PROP_HEIGHT, prop.h);
       const mat = crateMat.clone();
       mat.map = loadTiledTexture(assetUrl("material.crate"), Math.max(1, prop.w / WORLD_UNITS_PER_TILE), Math.max(1, PROP_HEIGHT / WORLD_UNITS_PER_TILE));
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(prop.x + prop.w / 2, PROP_HEIGHT / 2, prop.y + prop.h / 2);
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
       this.scene.add(mesh);
     }
 
@@ -215,10 +274,13 @@ export class Scene3D {
     const headMat = new THREE.MeshStandardMaterial({ color: 0x2e3238, roughness: 0.6 });
     const visorMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
 
+    // Rounded box edges instead of razor-sharp cube corners — a small change
+    // that reads as a much less "programmer art" silhouette once lit, since
+    // real gear/armor edges catch light as a soft highlight, not a hard line.
     const legW = PLAYER_RADIUS * 1.1;
     const legD = PLAYER_RADIUS * 0.9;
     const legH = 26;
-    const legs = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legD), pantsMat);
+    const legs = new THREE.Mesh(new RoundedBoxGeometry(legW, legH, legD, 2, 2), pantsMat);
     legs.position.y = legH / 2;
     group.add(legs);
 
@@ -226,31 +288,38 @@ export class Scene3D {
     const torsoD = PLAYER_RADIUS * 1.1;
     const torsoH = 24;
     const torsoY = legH + torsoH / 2;
-    const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH, torsoD), vestMat);
+    const torso = new THREE.Mesh(new RoundedBoxGeometry(torsoW, torsoH, torsoD, 2, 2), vestMat);
     torso.position.y = torsoY;
     group.add(torso);
 
-    const plate = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.6, torsoH * 0.75, 3), plateMat);
+    const plate = new THREE.Mesh(new RoundedBoxGeometry(torsoW * 0.6, torsoH * 0.75, 3, 2, 1), plateMat);
     plate.position.set(0, torsoY, torsoD / 2 + 1.5);
     group.add(plate);
 
     const sleeveW = 7;
     const sleeveH = torsoH - 2;
     for (const side of [-1, 1]) {
-      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(sleeveW, sleeveH, torsoD * 0.9), sleeveMat);
+      const sleeve = new THREE.Mesh(new RoundedBoxGeometry(sleeveW, sleeveH, torsoD * 0.9, 1, 2), sleeveMat);
       sleeve.position.set(side * (torsoW / 2 + sleeveW / 2 - 1), torsoY, 0);
       group.add(sleeve);
     }
 
     const headSize = 15;
     const headY = legH + torsoH + headSize / 2;
-    const head = new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), headMat);
+    const head = new THREE.Mesh(new RoundedBoxGeometry(headSize, headSize, headSize, 2, 3), headMat);
     head.position.y = headY;
     group.add(head);
 
     const visor = new THREE.Mesh(new THREE.BoxGeometry(headSize * 0.8, headSize * 0.25, 2), visorMat);
     visor.position.set(0, headY + 1, headSize / 2 + 0.5);
     group.add(visor);
+
+    group.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
 
     return group;
   }
@@ -406,7 +475,7 @@ export class Scene3D {
 
     updateDebugHud(this.session.stats);
 
-    this.renderer.render(this.scene, this.camera);
+    this.composer.render();
   };
 
   private syncSmokeVolumes(smokes: { x: number; y: number; remainingMs: number }[]): void {
@@ -560,6 +629,7 @@ export class Scene3D {
     cancelAnimationFrame(this.rafId);
     window.removeEventListener("resize", this.onResize);
     this.controls.destroy();
+    this.composer.dispose();
     this.renderer.dispose();
   }
 }

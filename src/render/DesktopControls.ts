@@ -61,7 +61,12 @@ export class DesktopControls implements Controls {
       // never prevent mouse-look from working.
       void this.canvas.requestPointerLock();
       try {
-        if (!document.fullscreenElement) void this.canvas.requestFullscreen?.().catch(() => undefined);
+        // Fullscreen the whole page, NOT the canvas -- requesting fullscreen
+        // on the canvas element itself makes it the fullscreen root, which
+        // hides every sibling DOM element (HUD, crosshair, buy menu, every
+        // overlay) since they aren't descendants of it. Real regression
+        // caught live: reported as "can't see any UI, can't exit."
+        if (!document.fullscreenElement) void document.documentElement.requestFullscreen?.().catch(() => undefined);
       } catch {
         // Fullscreen is optional; pointer lock above already fired.
       }

@@ -5,6 +5,7 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
+import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { NetSession } from "../net/session";
 import { HOST_SLOT, otherSlot, type PlayerState, type Slot } from "../sim/types";
 import { hasLineOfSight, wallsToSegments, type Segment } from "../sim/raycast";
@@ -26,7 +27,7 @@ import { updateDebugHud } from "../ui/DebugHud";
 import { hideConnectionStatus, showPeerGone, showReconnecting } from "../ui/ConnectionStatus";
 import { updateHud } from "./Hud";
 import * as audio from "../audio/engine";
-import { assetUrl } from "../data/assets.manifest";
+import { assetUrl, type AssetKey } from "../data/assets.manifest";
 
 const TEXTURE_LOADER = new THREE.TextureLoader();
 const WORLD_UNITS_PER_TILE = 140;
@@ -47,6 +48,25 @@ function loadTiledTexture(url: string, repeatX: number, repeatY: number): THREE.
 const HOST_COLOR = 0x2dd4bf;
 const JOINER_COLOR = 0xf59e0b;
 
+// Real modeled weapon geometry (CC0 "Ultimate Guns Pack" by Quaternius — see
+// public/assets/models/CREDITS.md) for the classes it covers. Melee has no
+// blade in the pack, so it stays on the procedural knife from buildGunModel.
+const GLTF_LOADER = new GLTFLoader();
+const GUN_MODEL_BY_CLASS: Partial<Record<string, AssetKey>> = {
+  pistol: "model.pistol",
+  smg: "model.smg",
+  rifle: "model.rifle",
+  sniper: "model.sniper",
+};
+// Longest-axis target length (world units) each imported model is uniformly
+// scaled to, roughly matching the old procedural geometry's proportions.
+const GUN_MODEL_TARGET_LENGTH: Partial<Record<string, number>> = {
+  pistol: 17,
+  smg: 26,
+  rifle: 32,
+  sniper: 40,
+};
+
 export class Scene3D {
   private readonly session: NetSession;
   private readonly renderer: THREE.WebGLRenderer;
@@ -62,6 +82,8 @@ export class Scene3D {
   private readonly effects: Effects;
   private readonly smokeMeshes = new Map<string, THREE.Mesh>();
   private viewmodelGroup: THREE.Group | null = null;
+  private readonly gltfCache = new Map<string, THREE.Object3D>();
+  private readonly gltfPending = new Set<string>();
   private currentViewmodelWeaponId: string | null = null;
 
   private lookPromptEl: HTMLDivElement | null = null;
@@ -330,7 +352,10 @@ export class Scene3D {
       this.camera.remove(this.viewmodelGroup);
       this.viewmodelGroup.traverse((child) => {
         if (child instanceof THREE.Mesh) {
-          child.geometry.dispose();
+          // GLTF-sourced meshes share their geometry with the cached template
+          // (cloned via .clone(), which copies the reference, not the data) —
+          // disposing it here would corrupt every future weapon-switch clone.
+          if (!child.userData.sharedGeometry) child.geometry.dispose();
           const mats = Array.isArray(child.material) ? child.material : [child.material];
           for (const m of mats) {
             if (m instanceof THREE.MeshStandardMaterial) m.map?.dispose();
@@ -352,17 +377,92 @@ export class Scene3D {
    * from the main barrel/slide so the model reads as multiple materials the
    * way a real gun does, not one flat-shaded block.
    */
-  private buildGunModel(weaponClass: string): THREE.Group {
-    const group = new THREE.Group();
-    group.position.set(9, -9, -24);
-
+  private buildGunMaterials(): { metal: THREE.MeshStandardMaterial; grip: THREE.MeshStandardMaterial; hardware: THREE.MeshStandardMaterial; lens: THREE.MeshStandardMaterial } {
     const metalTex = loadTiledTexture(assetUrl("material.gunmetal"), 1, 1);
     const gripTex = loadTiledTexture(assetUrl("material.gunmetal"), 0.5, 0.5);
     const hardwareTex = loadTiledTexture(assetUrl("material.gunmetal"), 0.35, 0.35);
-    const metal = new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.4, metalness: 0.6 });
-    const grip = new THREE.MeshStandardMaterial({ map: gripTex, color: 0x1c1d20, roughness: 0.85, metalness: 0.1 });
-    const hardware = new THREE.MeshStandardMaterial({ map: hardwareTex, color: 0x101114, roughness: 0.5, metalness: 0.65 });
-    const lens = new THREE.MeshStandardMaterial({ color: 0x081018, emissive: 0x1fb6ff, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.3 });
+    return {
+      metal: new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.4, metalness: 0.6 }),
+      grip: new THREE.MeshStandardMaterial({ map: gripTex, color: 0x1c1d20, roughness: 0.85, metalness: 0.1 }),
+      hardware: new THREE.MeshStandardMaterial({ map: hardwareTex, color: 0x101114, roughness: 0.5, metalness: 0.65 }),
+      lens: new THREE.MeshStandardMaterial({ color: 0x0a1622, emissive: 0x2fc8ff, emissiveIntensity: 1.4, roughness: 0.15, metalness: 0.3 }),
+    };
+  }
+
+  /**
+   * Clones the cached GLTF template for this weapon class, re-scales it to
+   * our viewmodel's world-unit scale, and swaps every sub-mesh's material for
+   * one of ours (matched by the source material's name — Quaternius's pack
+   * consistently names parts Metal/DarkMetal/LightMetal/Grey, Wood/DarkWood,
+   * Black/Black2, and Glass, which maps cleanly onto our metal/grip/hardware/
+   * lens set) rather than trusting the pack's own flat-color materials, so
+   * the model matches this scene's lighting/shadows/bloom instead of looking
+   * pasted in from a different renderer.
+   */
+  private styleImportedGunModel(weaponClass: string): THREE.Group {
+    const source = this.gltfCache.get(weaponClass)!;
+    const instance = source.clone(true);
+    const { metal, grip, hardware, lens } = this.buildGunMaterials();
+
+    instance.traverse((child) => {
+      if (child instanceof THREE.Mesh) {
+        child.userData.sharedGeometry = true;
+        const name = (Array.isArray(child.material) ? child.material[0]?.name : child.material.name)?.toLowerCase() ?? "";
+        child.material = name.includes("glass") ? lens : name.includes("wood") ? grip : name.includes("metal") || name.includes("grey") ? metal : hardware;
+        child.castShadow = true;
+        child.receiveShadow = true;
+      }
+    });
+
+    // Normalize scale: the pack's models come in at whatever raw unit the
+    // original FBX export used, not this game's world-unit scale.
+    const box = new THREE.Box3().setFromObject(instance);
+    const size = box.getSize(new THREE.Vector3());
+    const longest = Math.max(size.x, size.y, size.z) || 1;
+    const targetLength = GUN_MODEL_TARGET_LENGTH[weaponClass] ?? 26;
+    const scale = targetLength / longest;
+    instance.scale.setScalar(scale);
+
+    const center = box.getCenter(new THREE.Vector3()).multiplyScalar(scale);
+    const wrapper = new THREE.Group();
+    wrapper.position.set(9, -9, -24);
+    instance.position.set(-center.x, -center.y, -center.z);
+    // Quaternius's export forward axis lands on +Z after the pack's own
+    // baked Z-up->Y-up correction; our camera-forward is -Z, so face it.
+    instance.rotation.y = Math.PI;
+    wrapper.add(instance);
+    return wrapper;
+  }
+
+  private ensureGltfLoaded(weaponClass: string): void {
+    if (this.gltfCache.has(weaponClass) || this.gltfPending.has(weaponClass)) return;
+    const key = GUN_MODEL_BY_CLASS[weaponClass];
+    if (!key) return;
+    this.gltfPending.add(weaponClass);
+    GLTF_LOADER.load(
+      assetUrl(key),
+      (gltf) => {
+        this.gltfPending.delete(weaponClass);
+        this.gltfCache.set(weaponClass, gltf.scene);
+        // If the player is still holding this class once the (tiny, ~70KB)
+        // model finishes loading, swap the procedural placeholder for it.
+        if (this.currentViewmodelWeaponId && getWeapon(this.currentViewmodelWeaponId).class === weaponClass) {
+          this.rebuildViewmodel(weaponClass);
+        }
+      },
+      undefined,
+      () => this.gltfPending.delete(weaponClass),
+    );
+  }
+
+  private buildGunModel(weaponClass: string): THREE.Group {
+    if (this.gltfCache.has(weaponClass)) return this.styleImportedGunModel(weaponClass);
+    this.ensureGltfLoaded(weaponClass);
+
+    const group = new THREE.Group();
+    group.position.set(9, -9, -24);
+
+    const { metal, grip, hardware, lens } = this.buildGunMaterials();
 
     const rb = (w: number, h: number, d: number, radius = 0.6): THREE.BufferGeometry =>
       new RoundedBoxGeometry(w, h, d, 1, Math.min(radius, w / 2, h / 2, d / 2));

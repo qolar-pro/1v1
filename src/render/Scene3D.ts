@@ -191,21 +191,67 @@ export class Scene3D {
     this.scene.add(ring);
   }
 
+  /**
+   * A blocky low-poly soldier built from the same box-primitive language as
+   * the weapon viewmodels and the crate/wall geometry, rather than a smooth
+   * capsule — a capsule-plus-cone read as a placeholder next to everything
+   * else's sharp industrial edges. The gunmetal-textured chest plate ties the
+   * model back to the weapons/environment materials on purpose.
+   */
   private buildPlayerMesh(slot: Slot): THREE.Group {
     const color = slot === HOST_SLOT ? HOST_COLOR : JOINER_COLOR;
     const group = new THREE.Group();
+
     // Fabric goes on as a bump map only, not a color map — team color has to
     // stay flat and saturated for instant at-a-glance recognition (a fully
     // textured capsule muddied the amber/teal identity badly on a first try).
-    const fabricTex = loadTiledTexture(assetUrl("material.fabric"), 2, 3);
-    const bodyMat = new THREE.MeshStandardMaterial({ bumpMap: fabricTex, bumpScale: 0.6, color, roughness: 0.75 });
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(PLAYER_RADIUS, Math.max(1, EYE_HEIGHT - PLAYER_RADIUS * 2), 4, 8), bodyMat);
-    body.position.y = EYE_HEIGHT * 0.5;
-    group.add(body);
-    const nose = new THREE.Mesh(new THREE.ConeGeometry(6, 18, 8), new THREE.MeshStandardMaterial({ color: 0xffffff }));
-    nose.rotation.x = Math.PI / 2;
-    nose.position.set(0, EYE_HEIGHT * 0.8, PLAYER_RADIUS + 8);
-    group.add(nose);
+    const fabricTex = loadTiledTexture(assetUrl("material.fabric"), 1, 1);
+    const plateTex = loadTiledTexture(assetUrl("material.gunmetal"), 1, 1);
+
+    const pantsMat = new THREE.MeshStandardMaterial({ bumpMap: fabricTex, bumpScale: 0.5, color: 0x24262b, roughness: 0.85 });
+    const vestMat = new THREE.MeshStandardMaterial({ bumpMap: fabricTex, bumpScale: 0.5, color, roughness: 0.7 });
+    const sleeveMat = new THREE.MeshStandardMaterial({ bumpMap: fabricTex, bumpScale: 0.5, color: 0x1c1d20, roughness: 0.8 });
+    const plateMat = new THREE.MeshStandardMaterial({ map: plateTex, color: 0x8a8f99, roughness: 0.4, metalness: 0.5 });
+    const headMat = new THREE.MeshStandardMaterial({ color: 0x2e3238, roughness: 0.6 });
+    const visorMat = new THREE.MeshStandardMaterial({ color, emissive: color, emissiveIntensity: 0.6, roughness: 0.3 });
+
+    const legW = PLAYER_RADIUS * 1.1;
+    const legD = PLAYER_RADIUS * 0.9;
+    const legH = 26;
+    const legs = new THREE.Mesh(new THREE.BoxGeometry(legW, legH, legD), pantsMat);
+    legs.position.y = legH / 2;
+    group.add(legs);
+
+    const torsoW = PLAYER_RADIUS * 1.7;
+    const torsoD = PLAYER_RADIUS * 1.1;
+    const torsoH = 24;
+    const torsoY = legH + torsoH / 2;
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(torsoW, torsoH, torsoD), vestMat);
+    torso.position.y = torsoY;
+    group.add(torso);
+
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(torsoW * 0.6, torsoH * 0.75, 3), plateMat);
+    plate.position.set(0, torsoY, torsoD / 2 + 1.5);
+    group.add(plate);
+
+    const sleeveW = 7;
+    const sleeveH = torsoH - 2;
+    for (const side of [-1, 1]) {
+      const sleeve = new THREE.Mesh(new THREE.BoxGeometry(sleeveW, sleeveH, torsoD * 0.9), sleeveMat);
+      sleeve.position.set(side * (torsoW / 2 + sleeveW / 2 - 1), torsoY, 0);
+      group.add(sleeve);
+    }
+
+    const headSize = 15;
+    const headY = legH + torsoH + headSize / 2;
+    const head = new THREE.Mesh(new THREE.BoxGeometry(headSize, headSize, headSize), headMat);
+    head.position.y = headY;
+    group.add(head);
+
+    const visor = new THREE.Mesh(new THREE.BoxGeometry(headSize * 0.8, headSize * 0.25, 2), visorMat);
+    visor.position.set(0, headY + 1, headSize / 2 + 0.5);
+    group.add(visor);
+
     return group;
   }
 
@@ -233,8 +279,9 @@ export class Scene3D {
     group.position.set(9, -9, -24);
 
     const metalTex = loadTiledTexture(assetUrl("material.gunmetal"), 1, 1);
+    const gripTex = loadTiledTexture(assetUrl("material.gunmetal"), 0.5, 0.5);
     const metal = new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.45, metalness: 0.5 });
-    const grip = new THREE.MeshStandardMaterial({ color: 0x17181a, roughness: 0.8 });
+    const grip = new THREE.MeshStandardMaterial({ map: gripTex, color: 0x1c1d20, roughness: 0.85, metalness: 0.1 });
 
     const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): void => {
       const mesh = new THREE.Mesh(geo, mat);

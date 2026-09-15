@@ -224,10 +224,11 @@ button.primary:hover,
    "bottom" offset large enough to clear the cluster on a tall portrait phone
    pushed this almost to the top of the screen on a short landscape one
    (landscape mobile viewports are often well under 450px of CSS height). */
+/* FIRE moved inboard (see .tc-btn-fire) so the cluster no longer occupies
+   the very bottom strip of the screen -- this just needs to clear that. */
 body.touch-controls-on .hud-bottom-right {
   bottom: 20px;
-  right: 240px;
-  max-width: 150px;
+  right: 12px;
 }
 
 body.touch-controls-on .hud-bottom-left {
@@ -627,8 +628,8 @@ body.touch-controls-on .hud-bottom-left {
   position: absolute;
   right: 0;
   bottom: 0;
-  width: 260px;
-  height: 280px;
+  width: 320px;
+  height: 340px;
   pointer-events: none;
 }
 
@@ -655,9 +656,13 @@ body.touch-controls-on .hud-bottom-left {
   border-color: rgba(45, 212, 191, 0.6);
 }
 
+/* FIRE sits inboard from the corner, not glued to it — a thumb resting at
+   the very edge has nowhere to go to also drag-look; pulled in so the same
+   resting position can tap fire and roll into a look-drag without
+   relocating the thumb first. */
 .tc-btn-fire {
-  right: 14px;
-  bottom: 14px;
+  right: 70px;
+  bottom: 70px;
   width: 92px;
   height: 92px;
   background: rgba(120, 20, 20, 0.55);
@@ -675,8 +680,8 @@ body.touch-controls-on .hud-bottom-left {
 }
 
 .tc-btn-jump {
-  right: 100px;
-  bottom: 46px;
+  right: 156px;
+  bottom: 102px;
 }
 
 .tc-btn-sm {
@@ -685,23 +690,23 @@ body.touch-controls-on .hud-bottom-left {
 }
 
 .tc-btn-reload {
-  right: 22px;
-  bottom: 118px;
+  right: 78px;
+  bottom: 174px;
 }
 
 .tc-btn-use {
-  right: 150px;
-  bottom: 120px;
+  right: 206px;
+  bottom: 176px;
 }
 
 .tc-btn-nade {
-  right: 76px;
-  bottom: 178px;
+  right: 132px;
+  bottom: 234px;
 }
 
 .tc-btn-swap {
-  right: 176px;
-  bottom: 196px;
+  right: 232px;
+  bottom: 252px;
 }
 
 .tc-btn-buy {

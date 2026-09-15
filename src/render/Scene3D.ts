@@ -414,8 +414,16 @@ export class Scene3D {
       }
     });
 
-    // Normalize scale: the pack's models come in at whatever raw unit the
-    // original FBX export used, not this game's world-unit scale.
+    // Measured directly (not assumed): every model in this pack's longest
+    // axis is local X (the barrel-to-grip length), not Z — a bad guess here
+    // previously made the gun render "sideways," pointing along the camera's
+    // right axis instead of forward. Rotate +90° about Y first so local +X
+    // (muzzle direction) maps to world -Z (camera-forward), THEN measure the
+    // bounding box — computing the box before rotating and reusing that
+    // center afterward doesn't work, since the position offset needed to
+    // recenter the geometry is itself rotation-dependent.
+    instance.rotation.y = Math.PI / 2;
+    instance.updateMatrixWorld(true);
     const box = new THREE.Box3().setFromObject(instance);
     const size = box.getSize(new THREE.Vector3());
     const longest = Math.max(size.x, size.y, size.z) || 1;
@@ -427,9 +435,6 @@ export class Scene3D {
     const wrapper = new THREE.Group();
     wrapper.position.set(9, -9, -24);
     instance.position.set(-center.x, -center.y, -center.z);
-    // Quaternius's export forward axis lands on +Z after the pack's own
-    // baked Z-up->Y-up correction; our camera-forward is -Z, so face it.
-    instance.rotation.y = Math.PI;
     wrapper.add(instance);
     return wrapper;
   }

@@ -343,53 +343,108 @@ export class Scene3D {
     this.camera.add(this.viewmodelGroup);
   }
 
+  /**
+   * Every weapon class gets its own real part list (slide/barrel/trigger
+   * guard/sights/magazine/stock/optic, not just 2-3 stretched boxes) so each
+   * reads as an actual gun silhouette instead of a gray brick. Parts use
+   * RoundedBoxGeometry to match the player model's bevel language, and small
+   * hardware (sights, triggers, mags) gets a separate darker-tinted metal
+   * from the main barrel/slide so the model reads as multiple materials the
+   * way a real gun does, not one flat-shaded block.
+   */
   private buildGunModel(weaponClass: string): THREE.Group {
     const group = new THREE.Group();
     group.position.set(9, -9, -24);
 
     const metalTex = loadTiledTexture(assetUrl("material.gunmetal"), 1, 1);
     const gripTex = loadTiledTexture(assetUrl("material.gunmetal"), 0.5, 0.5);
-    const metal = new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.45, metalness: 0.5 });
+    const hardwareTex = loadTiledTexture(assetUrl("material.gunmetal"), 0.35, 0.35);
+    const metal = new THREE.MeshStandardMaterial({ map: metalTex, roughness: 0.4, metalness: 0.6 });
     const grip = new THREE.MeshStandardMaterial({ map: gripTex, color: 0x1c1d20, roughness: 0.85, metalness: 0.1 });
+    const hardware = new THREE.MeshStandardMaterial({ map: hardwareTex, color: 0x101114, roughness: 0.5, metalness: 0.65 });
+    const lens = new THREE.MeshStandardMaterial({ color: 0x081018, emissive: 0x1fb6ff, emissiveIntensity: 0.5, roughness: 0.15, metalness: 0.3 });
 
-    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): void => {
+    const rb = (w: number, h: number, d: number, radius = 0.6): THREE.BufferGeometry =>
+      new RoundedBoxGeometry(w, h, d, 1, Math.min(radius, w / 2, h / 2, d / 2));
+
+    const add = (geo: THREE.BufferGeometry, mat: THREE.Material, x: number, y: number, z: number, rx = 0, ry = 0, rz = 0): THREE.Mesh => {
       const mesh = new THREE.Mesh(geo, mat);
       mesh.position.set(x, y, z);
       mesh.rotation.set(rx, ry, rz);
       group.add(mesh);
+      return mesh;
     };
 
     switch (weaponClass) {
       case "pistol":
-        add(new THREE.BoxGeometry(5, 5, 14), metal, 0, 2, 0);
-        add(new THREE.BoxGeometry(2.5, 2.5, 8), metal, 0, 3, -10);
-        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 4);
+        add(rb(4.5, 4.5, 15), metal, 0, 2.5, -1); // slide
+        add(rb(2, 2, 5, 0.5), metal, 0, 2.5, -9.5); // barrel/muzzle tip
+        add(rb(4.6, 1, 3), hardware, 0, 4.6, -6); // rear sight
+        add(rb(1.2, 1, 1.6), hardware, 0, 4.5, -8.8); // front sight
+        add(rb(3.8, 8, 3.6, 0.8), grip, 0, -4, 4); // grip
+        add(rb(4.2, 1.2, 3.2), hardware, 0, -7.8, 3.6); // mag base
+        add(new THREE.TorusGeometry(2.1, 0.5, 6, 10, Math.PI), hardware, 0, -0.2, 1.5, 0, Math.PI / 2, 0); // trigger guard
+        add(rb(0.7, 1.6, 0.6), hardware, 0, 0.2, 1.2); // trigger
         break;
+
       case "smg":
-        add(new THREE.BoxGeometry(6, 6, 20), metal, 0, 2, -2);
-        add(new THREE.BoxGeometry(2.5, 2.5, 8), metal, 0, 3, -14);
-        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 2);
-        add(new THREE.BoxGeometry(3, 3, 10), grip, 0, -8, 4);
-        add(new THREE.BoxGeometry(2, 2, 12), metal, 0, 1, 12, 0.35, 0, 0);
+        add(rb(5.5, 5.5, 22), metal, 0, 2.5, -3); // receiver
+        add(rb(2.2, 2.2, 8), metal, 0, 2.5, -16); // barrel
+        add(new THREE.CylinderGeometry(1.6, 1.6, 3, 10), hardware, 0, 2.5, -20.5, Math.PI / 2, 0, 0); // muzzle device
+        add(rb(3.8, 3, 10), grip, 0, -0.5, -6, -0.05, 0, 0); // handguard
+        add(rb(1.6, 3, 1.6), grip, 0, -3, -9); // foregrip
+        add(rb(4.6, 1, 2.6), hardware, 0, 5.4, -13); // rear sight
+        add(rb(1, 1, 1.4), hardware, 0, 5.3, -19); // front sight
+        add(rb(3.6, 8, 3.4, 0.8), grip, 0, -4, 3); // grip
+        add(rb(4, 1.2, 3), hardware, 0, -7.7, 2.6); // mag base
+        add(rb(3.2, 3.2, 2), grip, 0, -1, 9); // stock body
+        add(new THREE.CylinderGeometry(0.8, 0.8, 6, 8), hardware, 0, -1, 12, Math.PI / 2, 0, 0); // stock tube
+        add(new THREE.TorusGeometry(1.9, 0.4, 6, 10, Math.PI), hardware, 0, -0.3, 0.5, 0, Math.PI / 2, 0); // trigger guard
         break;
+
       case "rifle":
-        add(new THREE.BoxGeometry(6, 6, 30), metal, 0, 2, -4);
-        add(new THREE.BoxGeometry(2.5, 2.5, 12), metal, 0, 3, -22);
-        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 0);
-        add(new THREE.BoxGeometry(3, 3, 12), grip, 0, -8, -2);
-        add(new THREE.BoxGeometry(4, 4, 10), metal, 0, 2, 14);
+        add(rb(5.5, 5.5, 30), metal, 0, 2.5, -4); // receiver
+        add(rb(2.2, 2.2, 14), metal, 0, 2, -24); // barrel
+        add(new THREE.CylinderGeometry(1.9, 1.9, 4, 10), metal, 0, 2, -30.5, Math.PI / 2, 0, 0); // muzzle brake body
+        add(new THREE.CylinderGeometry(1.9, 2.3, 1, 10), hardware, 0, 2, -32.4, Math.PI / 2, 0, 0); // muzzle brake cap
+        add(rb(4, 3.6, 14), grip, 0, -0.3, -18); // handguard
+        add(rb(1.6, 3, 1.6), grip, 0, -3.4, -14); // vertical foregrip
+        add(rb(4, 1.4, 6, 0.4), hardware, 0, 5.4, -6); // top rail
+        add(rb(2.2, 1.8, 1.6), hardware, 0, 6.6, -5); // red-dot body
+        add(new THREE.CylinderGeometry(0.9, 0.9, 1.4, 10), lens, 0, 6.6, -3.6, Math.PI / 2, 0, 0); // red-dot lens
+        add(rb(3.8, 8, 3.6, 0.8), grip, 0, -4, 0); // grip
+        add(rb(4.6, 8, 3.2, 0.8), hardware, -0.5, -8, 2, 0, 0, -0.18); // curved magazine
+        add(rb(3.4, 3.6, 3.4, 0.7), grip, 0, 1, 13); // stock
+        add(new THREE.CylinderGeometry(1.1, 1.1, 5, 8), hardware, 0, 1, 10.5, Math.PI / 2, 0, 0); // buffer tube
+        add(rb(3, 1.6, 3), grip, 0, -1.6, 15.5); // stock butt-pad
         break;
+
       case "sniper":
-        add(new THREE.BoxGeometry(5, 5, 36), metal, 0, 2, -6);
-        add(new THREE.CylinderGeometry(1.3, 1.3, 16, 8), metal, 0, 3, -28, Math.PI / 2, 0, 0);
-        add(new THREE.CylinderGeometry(1.8, 1.8, 12, 8), grip, 0, 7, -8, Math.PI / 2, 0, 0);
-        add(new THREE.BoxGeometry(4, 8, 4), grip, 0, -4, 4);
-        add(new THREE.BoxGeometry(4, 4, 10), metal, 0, 2, 18);
+        add(rb(5, 5, 34), metal, 0, 2.5, -6); // receiver
+        add(rb(2, 2, 16), metal, 0, 2, -30); // heavy barrel
+        add(new THREE.CylinderGeometry(1.7, 1.7, 5, 10), hardware, 0, 2, -37, Math.PI / 2, 0, 0); // ported muzzle brake
+        add(new THREE.CylinderGeometry(0.6, 0.6, 3, 6), metal, 3.4, 2, -18, 0, 0, Math.PI / 2); // bolt handle
+        add(new THREE.CylinderGeometry(1.7, 1.7, 22, 12), hardware, 0, 8, -10, Math.PI / 2, 0, 0); // scope tube
+        add(new THREE.CylinderGeometry(2, 2, 3, 12), lens, 0, 8, -20.5, Math.PI / 2, 0, 0); // scope objective lens
+        add(new THREE.CylinderGeometry(1.6, 1.6, 2.2, 12), lens, 0, 8, 0.5, Math.PI / 2, 0, 0); // scope ocular lens
+        add(rb(1.2, 4.6, 1.2), hardware, 0, 5.2, -14); // front scope mount
+        add(rb(1.2, 4.6, 1.2), hardware, 0, 5.2, -4); // rear scope mount
+        add(rb(3.6, 5, 3.4, 0.8), grip, 0, -0.5, 6); // thumbhole stock body
+        add(rb(2.6, 2, 5, 0.6), grip, 0, 4.6, 8); // cheek riser
+        add(rb(3, 8, 3.4, 0.8), grip, 0, -4.5, 4); // pistol grip
+        add(rb(3.4, 1.2, 3), hardware, 0, -8.2, 3.4); // mag base
+        add(new THREE.CylinderGeometry(0.4, 0.4, 9, 6), hardware, -2.6, -4.5, -22, 0.5, 0, 0.3); // bipod leg L
+        add(new THREE.CylinderGeometry(0.4, 0.4, 9, 6), hardware, 2.6, -4.5, -22, -0.5, 0, -0.3); // bipod leg R
         break;
-      default: // melee
-        add(new THREE.BoxGeometry(2, 1, 16), metal, 0, 2, -10);
-        add(new THREE.CylinderGeometry(1.5, 1.5, 8, 8), grip, 0, 0, 2, Math.PI / 2, 0, 0);
+
+      default: { // melee
+        const blade = add(new THREE.ConeGeometry(3.2, 18, 4), metal, 0, 2, -14, Math.PI / 2, Math.PI / 4, 0);
+        blade.scale.set(1, 1, 0.28);
+        add(rb(4.2, 1.6, 1.4), hardware, 0, 2, -4.5); // cross-guard
+        add(new THREE.CylinderGeometry(1.1, 1.1, 8, 10), grip, 0, 1.6, 2, Math.PI / 2, 0, 0); // handle
+        add(new THREE.SphereGeometry(1.3, 10, 8), hardware, 0, 1.4, 6.2); // pommel
         break;
+      }
     }
 
     return group;
@@ -404,7 +459,7 @@ export class Scene3D {
 
     this.updateConnectionState(nowMs);
     if (this.peerGoneShown) {
-      updateDebugHud(this.session.stats);
+      if (import.meta.env.DEV) updateDebugHud(this.session.stats);
       return;
     }
 
@@ -473,7 +528,9 @@ export class Scene3D {
     updateHud({ self: localPlayer, match: matchView, localWins: matchView.wins[localSlot], enemyWins: matchView.wins[remoteSlot], role: localRole });
     this.updateCrosshair(localPlayer);
 
-    updateDebugHud(this.session.stats);
+    // Dev-only perf/net readout — not part of the game's actual HUD, and
+    // real clutter on a small mobile screen.
+    if (import.meta.env.DEV) updateDebugHud(this.session.stats);
 
     this.composer.render();
   };

@@ -49,21 +49,22 @@ export class TouchControls implements Controls {
   private wantSlotQueued: WeaponSlot | null = null;
 
   constructor() {
+    document.body.classList.add("touch-controls-on");
     this.root = document.createElement("div");
     this.root.id = "touch-controls";
     this.root.innerHTML = `
       <div class="stick-zone stick-zone-left" id="tc-left-zone">
-        <div class="stick-base" id="tc-left-base"><div class="stick-thumb" id="tc-left-thumb"></div></div>
+        <div class="stick-base" id="tc-left-base"><div class="stick-ring"></div><div class="stick-thumb" id="tc-left-thumb"></div></div>
       </div>
       <div class="stick-zone stick-zone-right" id="tc-look-zone"></div>
-      <div class="tc-buttons">
-        <button class="tc-btn" id="tc-reload">R</button>
-        <button class="tc-btn tc-btn-fire" id="tc-fire">FIRE</button>
-        <button class="tc-btn" id="tc-use">USE</button>
-        <button class="tc-btn" id="tc-jump">JUMP</button>
-        <button class="tc-btn" id="tc-grenade">G</button>
-        <button class="tc-btn" id="tc-swap">SWAP</button>
-        <button class="tc-btn tc-btn-buy" id="tc-buy">BUY</button>
+      <button class="tc-btn tc-btn-buy" id="tc-buy">BUY</button>
+      <div class="tc-cluster">
+        <button class="tc-btn tc-btn-sm tc-btn-swap" id="tc-swap"><span class="tc-ic tc-ic-swap"></span></button>
+        <button class="tc-btn tc-btn-sm tc-btn-nade" id="tc-grenade"><span class="tc-ic tc-ic-nade"></span></button>
+        <button class="tc-btn tc-btn-sm tc-btn-use" id="tc-use"><span class="tc-ic tc-ic-use">E</span></button>
+        <button class="tc-btn tc-btn-sm tc-btn-reload" id="tc-reload"><span class="tc-ic tc-ic-reload"></span></button>
+        <button class="tc-btn tc-btn-md tc-btn-jump" id="tc-jump"><span class="tc-ic tc-ic-jump"></span></button>
+        <button class="tc-btn tc-btn-fire" id="tc-fire"><span class="tc-ic tc-ic-fire"></span></button>
       </div>
     `;
     document.body.appendChild(this.root);
@@ -210,6 +211,7 @@ export class TouchControls implements Controls {
 
   destroy(): void {
     this.root.remove();
+    document.body.classList.remove("touch-controls-on");
   }
 }
 
